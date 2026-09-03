@@ -57,7 +57,7 @@ RunSummary → metrics（可执行率 / 通过率）
 | `config.LLMConfig` | `from_env()` | 读取 `AITAE_LLM_*`；模型/地址与代码解耦 | ✅ 已可用 |
 | `config.PathsConfig` | 默认路径 | 产物统一进 `data/`（gitignore） | ✅ 已可用 |
 | `llm.LLMClient.complete()` | `messages→LLMResponse` | 单轮对话；429/5xx 重试；记录 tokens/耗时/重试次数 | 任务 2 |
-| `parser.openapi.load_spec/iter_operations` | 文件→`Operation[]` | 解析并归一化文档差异 | 任务 2 |
+| `parser.openapi.load_spec/iter_operations` | 文件→`Operation[]` | 解析并归一化文档差异 | ✅ 2026-09-03 |
 | `parser.codec.parse_llm_output` | 文本→`GeneratedTest[]` | 剥离围栏、json 解析、结构校验 | 任务 2 |
 | `parser.codec.validate_code` | `GeneratedTest→errors[]` | ast 静态校验（语法/函数名/危险调用初筛） | 任务 2 |
 | `parser.codec.write_test_file` | `→Path` | 按 tag/模块组织落盘 | 任务 2 |
@@ -65,6 +65,12 @@ RunSummary → metrics（可执行率 / 通过率）
 | `runner.run_pytest` | `→RunSummary` | 执行生成用例，区分 passed/failed/errors | 任务 2 |
 | `metrics.Metrics` | 率值计算 | 口径统一，避免“数字对不上” | ✅ 已可用 |
 
+> **实现记录（2026-09-03，任务 2 第一步）**：`parser/openapi.py` 已落地，两点对骨架契约的细化：
+> 1. `Operation` 新增 `security: list` 字段（取 operation 级，缺省回退文档顶层）——生成器据此区分「要不要先登录拿 token」；
+> 2. 归一化形状具体化：`request_body = {required, content: {media_type: {schema}}}`（保留 media_type：json 用 `requests.json=`、form 用 `requests.data=`，构造方式不同）；`responses = {status: {description, content: {media_type: {schema}}}}`，空 schema `{}` 表示无响应体；
+> 3. Swagger 2.0 采用「桥接」而非双轨：`_bridge_swagger2_to_openapi3` 把 definitions / body+formData / 响应 schema / consumes-produces 翻译成 3.x 形状后复用同一套归一化（归一化只实现一份，避免双轨漂移）。
+>
+> 验证：真实样例 todo_app-openapi.json → 19 个 Operation / 17 path；全量 35 个测试通过。真实指标仍【待实测】。
 ## 5. LLM 输出的结构化约束（为什么不用裸 Markdown）
 
 LLM 输出**必须是 JSON**（json_mode），形如：

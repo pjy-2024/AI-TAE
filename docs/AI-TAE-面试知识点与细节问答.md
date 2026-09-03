@@ -1,6 +1,6 @@
 # AI-TAE 项目 · 面试知识点与细节问答
 
-版本：v0.1（2026-09-03）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
+版本：v0.2（2026-09-03，随代码实时更新）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
 
 用法：面试前按第 9 节 checklist 过一遍；所有带【待实测】的数字，必须在真实跑通后填入，未填前不要对外说。
 
@@ -20,7 +20,7 @@
 
 | 版本 | 做什么 | 核心产出/证据 | 现状 |
 |---|---|---|---|
-| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建，代码未开始 |
+| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建；parser/openapi 已完成（主流程实现中） |
 | V2 | UI 失败自愈：KV→RAG→LLM→人工确认 | 自愈成功率、缓存命中率【待实测】 | 规划中 |
 | V3 | LLM-as-Judge + golden 评测 | judge 与人工一致率【待实测】 | 规划中 |
 
@@ -30,6 +30,7 @@
 - D 盘只读后，在 C 盘重建了独立 Python 3.12.14 + 项目 .venv，与 D 盘完全解耦（路径见进度文档）。
 - 被测项目已选定 manojnd9/todo_app（FastAPI），固定 commit f3cf7eeb...，本地 SQLite 跑通：4 个页面 200；注册 201、登录拿到 JWT、建待办 201、列表 200、查用户 200。
 - 已导出其 OpenAPI（17 个 path）到 samples/openapi/，作为 V1 输入素材。
+- V1 第一步 parser/openapi.py 已完成并验证（代码 src/aiae/parser/openapi.py，测试 tests/test_parser_openapi.py）：真实 OpenAPI 解析出 19 个 Operation / 17 path；支持 OpenAPI 3.x 与 Swagger 2.0（桥接）归一化；全量 35 个测试通过。
 ## 三、讲解主线（按此讲故事，别背题）
 
 1. 背景：UI 自动化脆弱、AI 生成测试两大难题（跑不起来 / 无法证明能发现缺陷）、真 Bug 与 Flaky 难区分。
@@ -88,25 +89,33 @@
 
 答：【待实测】。设计：只在失败时调 LLM；命中缓存不调；重试限次；记录每次调用的 prompt/completion tokens，按单价估算，留日志可追溯。
 
+#### Q12 parser 为什么做归一化（防腐层）？$ref 怎么处理？
+
+答：接口文档差异很大（Swagger 2.0 vs OpenAPI 3.x、参数内联 vs $ref、body 写法不同），如果不收敛，差异会漏进生成器每一层。parser 把外部格式差异隔离在单一模块，生成器只认自己的 Operation 结构——防腐层思想，换被测项目时只改/只测这一个模块。$ref 递归解析成真实结构（生成器要直接读字段，不留指针）；只支持文档内引用，外部文件引用明确报错；递归带栈检测，同一 ref 出现两次即判循环报错。真实文件：src/aiae/parser/openapi.py；真实样例 19 个 Operation / 17 path 解析通过，35 个测试。
+
+#### Q13 换一个 Swagger 2.0 的老项目怎么办？
+
+答：2.0 没有 requestBody，body/formData 是 parameters 里的两项；组件区叫 definitions；响应 schema 直接挂 response 对象；media type 由 consumes/produces 声明。实现上做「最小桥接」：definitions 搬进 components/schemas 并重写 $ref 前缀、body/formData 转 requestBody、响应 schema 包一层 content、参数顶层 type 收进 schema 子对象，再复用同一套 OpenAPI 3.x 归一化——归一化只实现一份，避免双轨逻辑漂移。桥接范围刻意收敛到生成器需要的差异点，host/basePath（服务地址）不归本层管。
+
 ### 4.3 技术二面（底层 / 系统）
 
-#### Q12 如果设计成多用户 / 上 CI，架构怎么改？
+#### Q14 如果设计成多用户 / 上 CI，架构怎么改？
 
 答：现状是单机嵌入式（SQLite/ChromaDB/diskcache）。上多用户：引入用户/项目隔离，KV 与向量库加命名空间，SQLite 换 Postgres，diskcache 换 Redis，任务队列化（异步生成），结果落库+审计；上 CI：被测项目与生成的用例分离，Docker 沙箱执行，产物与指标上报。
 
-#### Q13 LLM 生成代码的安全风险？怎么隔离？
+#### Q15 LLM 生成代码的安全风险？怎么隔离？
 
 答：生成代码可能含恶意/错误逻辑。对策：默认只在测试环境执行；Docker 沙箱（断网、只读被测代码、资源限制）；应用前人工确认；静态初筛（危险调用黑名单）作为第一道防线。
 
-#### Q14 自愈流程的完整时序？
+#### Q16 自愈流程的完整时序？
 
 答：失败捕获（错误签名）→ 查 KV 缓存 → 命中则直接应用候选修复；未命中 → 查 RAG 相似案例 → 仍未解决 → 组织上下文问 LLM → 输出修复建议 + diff → 人工确认 → 应用 → 重跑 → 结果写回 KV/RAG（形成经验沉淀）。
 
-#### Q15 如果换一个模型，系统会崩吗？
+#### Q17 如果换一个模型，系统会崩吗？
 
 答：不会。两重保障：1) 只依赖 OpenAI 兼容公共子集 chat/completions，模型/地址走配置；2) 输出受 JSON Schema 约束 + 本地校验，模型变了不合格输出会被拦截并重试。换模型后跑一遍评测回归（golden 一致率、可执行率）确认无退化。
 
-#### Q16 被测项目怎么保证可复现？（依赖漂移）
+#### Q18 被测项目怎么保证可复现？（依赖漂移）
 
 答：真实踩过坑：被测项目按 2024 底依赖写（fastapi 0.115.6 / starlette 0.41），装最新 starlette 1.6 后所有 Jinja 页面 500（TemplateResponse 签名变了）。对策：被测项目按其 lock 时代版本运行 + 固定 commit f3cf7eeb...，不追最新；这也解释了为什么「固定版本 + 锁依赖」是工程必修课。
 
@@ -118,6 +127,7 @@
 | editable 安装与 .pth 是什么？ | pip install -e 通过 .pth 把 src 挂进 site-packages，改代码即时生效 | 现场可演示 import 路径 |
 | 为什么 poetry 的 requirements 在 3.12 装不上？ | 导出时带 python_full_version==3.11.0 标记，版本不满足即跳过 | 说明读锁文件/声明再动手的习惯 |
 | 指标口径（分母是谁）？ | 可执行率=可执行/生成；通过率=通过/可执行，报数先报口径 | 直接说「口径我写在文档里」 |
+| parser 的 $ref / Swagger 2.0 怎么做？ | 防腐层归一化：文档内 $ref 递归解析（带栈防循环）+ 2.0 桥接成 3.x 复用同一套逻辑 | 指到 src/aiae/parser/openapi.py 与其测试 |
 | KV key 怎么设计？ | 错误类型+元素特征+页面指纹 组成签名 | 说思路即可，具体等数据 |
 | RAG 检索不到怎么办？ | 降级问 LLM；抽检人工评估检索质量 | 诚实说这是待评测项 |
 | golden 怎么防标注不一致？ | 规则先写死+双人抽检（自己与同学） | 说明标注流程比数字更重要 |
