@@ -58,9 +58,9 @@ RunSummary → metrics（可执行率 / 通过率）
 | `config.PathsConfig` | 默认路径 | 产物统一进 `data/`（gitignore） | ✅ 已可用 |
 | `llm.LLMClient.complete()` | `messages→LLMResponse` | 单轮对话；429/5xx 重试；记录 tokens/耗时/重试次数 | 任务 2 |
 | `parser.openapi.load_spec/iter_operations` | 文件→`Operation[]` | 解析并归一化文档差异 | ✅ 2026-09-03 |
-| `parser.codec.parse_llm_output` | 文本→`GeneratedTest[]` | 剥离围栏、json 解析、结构校验 | 任务 2 |
-| `parser.codec.validate_code` | `GeneratedTest→errors[]` | ast 静态校验（语法/函数名/危险调用初筛） | 任务 2 |
-| `parser.codec.write_test_file` | `→Path` | 按 tag/模块组织落盘 | 任务 2 |
+| `parser.codec.parse_llm_output` | 文本→`GeneratedTest[]` | 剥离围栏、json 解析、结构校验 | ✅ 2026-09-03 |
+| `parser.codec.validate_code` | `GeneratedTest→errors[]` | ast 静态校验（语法/函数名/危险调用初筛） | ✅ 2026-09-03 |
+| `parser.codec.write_test_file` | `→Path` | 按 tag/模块组织落盘 | ✅ 2026-09-03 |
 | `generator.generate_for_operations` | `→GenerationReport` | 主流程编排 + 限次重试 | 任务 2 |
 | `runner.run_pytest` | `→RunSummary` | 执行生成用例，区分 passed/failed/errors | 任务 2 |
 | `metrics.Metrics` | 率值计算 | 口径统一，避免“数字对不上” | ✅ 已可用 |
@@ -71,6 +71,13 @@ RunSummary → metrics（可执行率 / 通过率）
 > 3. Swagger 2.0 采用「桥接」而非双轨：`_bridge_swagger2_to_openapi3` 把 definitions / body+formData / 响应 schema / consumes-produces 翻译成 3.x 形状后复用同一套归一化（归一化只实现一份，避免双轨漂移）。
 >
 > 验证：真实样例 todo_app-openapi.json → 19 个 Operation / 17 path；全量 35 个测试通过。真实指标仍【待实测】。
+>
+> **实现记录（2026-09-03，任务 2 第二步）**：`parser/codec.py` 已落地，与 generator 的 Prompt / runner 的 conftest 配套的落盘约定：
+> 1. 文件名保证 pytest 可收集（`test_*.py`，module_name 不带前缀自动补），并清洗路径防目录注入；
+> 2. 文件头统一 `import requests` + 元数据注释 —— LLM 只输出函数体，import 由本层统一提供，消除「每用例忘 import」类低级错误；
+> 3. 重复生成同一接口覆盖写（幂等草稿），不产生重复文件。
+>
+> 校验错误信息精确到 `tests[i]` 字段并回传 LLM 限次重试。验证：全量 56 个测试通过。
 ## 5. LLM 输出的结构化约束（为什么不用裸 Markdown）
 
 LLM 输出**必须是 JSON**（json_mode），形如：
