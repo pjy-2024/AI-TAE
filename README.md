@@ -13,16 +13,16 @@
 
 > ⚠️ **真实数字纪律**：本仓库一切指标以【待实测】占位。未实测前不填任何数字，拒绝编造/包装。
 
-## 系统架构（规划）
+## 系统架构（V1 已实测）
 
 ```mermaid
 flowchart LR
-    subgraph V1[V1 接口用例生成]
-        A[OpenAPI 文件] --> B[parser 归一化]
-        B --> C[LLM 生成 结构化 JSON]
-        C --> D[codec 校验与落盘]
-        D --> E[pytest 执行]
-        E --> F[metrics 可执行率/通过率]
+    subgraph V1["V1 接口用例生成 · 2026-09-03 已实测"]
+        A["OpenAPI 文件<br/>todo_app 19 接口"] --> B["parser 归一化<br/>3.x + Swagger 2.0"]
+        B --> C["LLM 生成 结构化 JSON<br/>DeepSeek"]
+        C --> D["codec 校验与落盘<br/>19/19 落盘"]
+        D --> E["pytest 真实执行<br/>19 用例"]
+        E --> F["metrics<br/>可执行率 100% · 通过率 100%"]
     end
     subgraph V2[V2 UI 失败自愈]
         G[UI 回归失败] --> H[KV 缓存命中?]
@@ -38,6 +38,16 @@ flowchart LR
 ```
 
 技术栈：Python 3.12 + FastAPI(被测) / pytest + requests / OpenAI 兼容接口 / diskcache + ChromaDB + SQLite（V2 起）/ Docker 沙箱（V2 起）。刻意不引 LangChain——手写 pipeline，每一环可讲清。
+
+### V1 实测指标（2026-09-03，真实）
+
+19 个接口（todo_app）由 DeepSeek 真实生成、对被测服务真实执行，三轮迭代至定稿；连跑两次可复现。
+
+![V1 三轮迭代通过率趋势](docs/images/v1-pass-rate-trend.png)
+
+- 可执行率 = 19/19 = 100%（codec/ast 门禁：LLM 输出都能被 pytest 收集执行）
+- 通过率 = 19/19 = 100%（分母 = 可执行；三次迭代失败分类均为「用例准备不足」，无一为被测项目真 Bug）
+- 完整口径与迭代记录见 docs/progress-2026-09-03.md §六；junit 报告在 data/runs（gitignore，不入库）
 
 ## 环境（Windows 已迁移到 C 盘独立环境）
 
