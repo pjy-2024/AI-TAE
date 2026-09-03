@@ -11,18 +11,31 @@
 
 > ⚠️ **真实数字纪律**：本仓库一切指标以【待实测】占位。未实测前不填任何数字，拒绝编造/包装。
 
-## 快速开始（骨架阶段）
+## 环境（Windows 已迁移到 C 盘独立环境）
 
-```bash
-# 1) 安装（可选：骨架冒烟测试只用标准库，不装依赖也能跑）
-pip install -e ".[dev]"
+> 背景：原开发环境装在 D 盘，D 盘现为只读保护，故在 C 盘重建，**与 D 盘完全解耦**。
 
-# 2) 环境自检（唯一可用的命令）
-python -m aiae.cli selfcheck
+- 独立 Python：`C:\Users\彭井艺\AppData\Local\Programs\Python\python312\python.exe`（官方 Python 3.12 二进制，纯解压安装，不依赖注册表）
+- 项目虚拟环境：本目录 `.venv`（已 gitignore），`pyvenv.cfg` 的 home 指向上述 C 盘 Python
+- 后续若想更"标准"，可在 D 盘修复后用 python.org 安装器正常注册 `py`/PATH；当前用法见下。
 
-# 3) 冒烟测试
-pytest -q
+## 快速开始（Windows PowerShell）
+
+```powershell
+# 1) 激活项目虚拟环境
+cd C:\Users\彭井艺\Desktop\秋招项目\项目作品\04-AI智能测试辅助引擎-AITAE
+.\.venv\Scripts\Activate.ps1
+
+# 2) 安装依赖（开发 = 运行时 + pytest）并注册本包
+python -m pip install -r requirements-dev.txt
+python -m pip install -e .
+
+# 3) 环境自检 & 冒烟测试
+aiae selfcheck
+python -m pytest -q
 ```
+
+> 依赖清单约定：`requirements.txt` = 运行时；`requirements-dev.txt` = 运行时 + 测试；V2 再引入 `requirements-v2.txt`（diskcache/chromadb/playwright）。权威来源是 `pyproject.toml`。
 
 ## 目录结构
 
@@ -30,7 +43,7 @@ pytest -q
 04-AI智能测试辅助引擎-AITAE/
 ├── docs/
 │   └── v1-technical-design.md   # V1 技术方案细化（数据流/接口契约/429/指标口径）
-├── src/aiae/                    # 主包（src 布局，后续业务代码都在这）
+├── src/aiae/                    # 主包（src 布局）
 │   ├── config.py                # 配置（环境变量，密钥不入库）
 │   ├── cli.py                   # 命令行入口（selfcheck 可用）
 │   ├── llm/                     # LLM 调用封装（429 退避重试）—— 契约先行
@@ -50,7 +63,7 @@ pytest -q
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 任务 1 | 确认被测开源小项目 + 细化 V1 技术方案 | 骨架已建；**被测项目待你确认** |
+| 任务 1 | 确认被测开源小项目 + 细化 V1 技术方案 | 骨架已建 + C 盘环境就绪；**被测项目待确认** |
 | 任务 2 | V1：OpenAPI → 生成 → Parser → pytest 执行 → 指标 | 未开始（初试后集中做） |
 | 任务 3 | V2：自愈 + KV/RAG | 未开始 |
 | 任务 4 | V3：judge + golden | 未开始（视时间） |

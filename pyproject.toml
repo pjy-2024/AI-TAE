@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "AI 智能测试辅助引擎：接口用例自动生成 -> UI 失败自愈 -> 真Bug/Flaky 判定（当前为骨架阶段）"
 readme = "README.md"
 requires-python = ">=3.10"
+# 运行时依赖。开发/测试依赖在 requirements-dev.txt（与运行时分离，避免污染生产安装）。
 dependencies = [
   "openai>=1.30",      # OpenAI 兼容接口（DeepSeek/Qwen 都走它，供应商无关）
   "pyyaml>=6.0",       # OpenAPI YAML 解析
@@ -15,12 +16,6 @@ dependencies = [
   "pydantic>=2.5",     # LLM 输出的结构化校验
   "python-dotenv>=1.0" # .env 加载
 ]
-
-[project.optional-dependencies]
-# 开发/自测
-dev = ["pytest>=8.0"]
-# V2 再安装，避免现在引入重依赖（chromadb/playwright 体积大）
-v2 = ["diskcache>=5.6", "chromadb>=0.5", "playwright>=1.44"]
 
 [project.scripts]
 aiae = "aiae.cli:main"
