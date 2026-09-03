@@ -62,7 +62,7 @@ RunSummary → metrics（可执行率 / 通过率）
 | `parser.codec.validate_code` | `GeneratedTest→errors[]` | ast 静态校验（语法/函数名/危险调用初筛） | ✅ 2026-09-03 |
 | `parser.codec.write_test_file` | `→Path` | 按 tag/模块组织落盘 | ✅ 2026-09-03 |
 | `generator.generate_for_operations` | `→GenerationReport` | 主流程编排 + 限次重试 | ✅ 2026-09-03 |
-| `runner.run_pytest` | `→RunSummary` | 执行生成用例，区分 passed/failed/errors | 任务 2 |
+| `runner.run_pytest` | `→RunSummary` | 执行生成用例，区分 passed/failed/errors | ✅ 2026-09-03 |
 | `metrics.Metrics` | 率值计算 | 口径统一，避免“数字对不上” | ✅ 已可用 |
 
 > **实现记录（2026-09-03，任务 2 第一步）**：`parser/openapi.py` 已落地，两点对骨架契约的细化：
@@ -96,6 +96,15 @@ RunSummary → metrics（可执行率 / 通过率）
 > 5. Prompt 精简：4xx/5xx 响应只留 description（嵌套 schema 占 token 对断言价值低），token 优化待端到端实测后再迭代。
 >
 > 验证：全量 80 个测试通过（9 个 generator mock 测试）。
+>
+> **实现记录（2026-09-03，任务 2 第五步）**：`runner/` 已落地，关键决策与踩坑：
+> 1. 子进程隔离执行（`sys.executable -m pytest`），不用 `pytest.main`（自身会话嵌套会抢插件/缓存/捕获）；
+> 2. 结果收集用 `--junitxml` 标准报告解析：`<failure>`=断言失败（疑似真问题）、`<error>`=import/收集/fixture 级错误（不可执行）、`<skipped>`；注意 pytest 把函数内所有异常（含连不上服务）算 failure——口径边界待端到端真实数据校验；
+> 3. 运行前自动确保 `conftest.py` 提供 `base_url` fixture（没有才写，人工改过不覆盖）——否则收集期 fixture not found 会让可执行率假性为 0；
+> 4. 踩坑：测试目录在项目子树之外（如系统 Temp）时 pytest 向上找 rootdir 会扫到无权限目录 → 收集失败，需显式 `--rootdir <generated_dir>`；
+> 5. 踩坑：collection error 默认中断整批（一个文件 import 坏，后面的全不跑）→ 加 `--continue-on-collection-errors`，坏文件只计 error。
+>
+> 验证：全量 88 个测试通过（8 个 runner 测试，含真实子进程集成样例）。
 ## 5. LLM 输出的结构化约束（为什么不用裸 Markdown）
 
 LLM 输出**必须是 JSON**（json_mode），形如：
