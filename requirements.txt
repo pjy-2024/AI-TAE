@@ -1,0 +1,10 @@
+# 依赖的权威来源是 pyproject.toml（本文件只是快速安装入口，避免两份清单漂移）。
+# 推荐安装方式：pip install -e ".[dev]"
+# 骨架阶段可以不装任何依赖 —— 冒烟测试只用到标准库。
+
+openai>=1.30
+pyyaml>=6.0
+requests>=2.31
+pydantic>=2.5
+python-dotenv>=1.0
+pytest>=8.0

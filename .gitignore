@@ -1,0 +1,21 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 密钥与环境（绝不入库）=====
+.env
+
+# ===== 运行产物与本地数据：SQLite / ChromaDB / diskcache / 生成用例草稿，全部不入库 =====
+data/
+
+# ===== IDE =====
+.idea/
+.vscode/
