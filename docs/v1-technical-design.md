@@ -56,7 +56,7 @@ RunSummary → metrics（可执行率 / 通过率）
 |---|---|---|---|
 | `config.LLMConfig` | `from_env()` | 读取 `AITAE_LLM_*`；模型/地址与代码解耦 | ✅ 已可用 |
 | `config.PathsConfig` | 默认路径 | 产物统一进 `data/`（gitignore） | ✅ 已可用 |
-| `llm.LLMClient.complete()` | `messages→LLMResponse` | 单轮对话；429/5xx 重试；记录 tokens/耗时/重试次数 | 任务 2 |
+| `llm.LLMClient.complete()` | `messages→LLMResponse` | 单轮对话；429/5xx 重试；记录 tokens/耗时/重试次数 | ✅ 2026-09-03 |
 | `parser.openapi.load_spec/iter_operations` | 文件→`Operation[]` | 解析并归一化文档差异 | ✅ 2026-09-03 |
 | `parser.codec.parse_llm_output` | 文本→`GeneratedTest[]` | 剥离围栏、json 解析、结构校验 | ✅ 2026-09-03 |
 | `parser.codec.validate_code` | `GeneratedTest→errors[]` | ast 静态校验（语法/函数名/危险调用初筛） | ✅ 2026-09-03 |
@@ -78,6 +78,15 @@ RunSummary → metrics（可执行率 / 通过率）
 > 3. 重复生成同一接口覆盖写（幂等草稿），不产生重复文件。
 >
 > 校验错误信息精确到 `tests[i]` 字段并回传 LLM 限次重试。验证：全量 56 个测试通过。
+>
+> **实现记录（2026-09-03，任务 2 第三步）**：`llm/client.py` 已落地，关键实现决策：
+> 1. 关掉 openai SDK 自带重试（`max_retries=0`）自实现——SDK 重试不可见/不可记账/不走本决策表；
+> 2. 429 优先读 `Retry-After`（秒数，HTTP-date 解析失败走退避兜底），否则指数退避 `min(cap, base*2^n)` + `uniform(0, jitter)` 抖动；
+> 3. 400/401/403/404/422 等请求错误不重试（重试 = 重复计费）；`finish_reason=length`（截断）直接报不可重试错误（重试无用，应调大 max_tokens）；
+> 4. `api_key` 为空用占位符构造（openai 3.x 空 key 构造期即抛），把「未配置」延迟到 `complete()` 统一报错；
+> 5. 记账内建：`LLMResponse{usage, latency_s, retries}`。
+>
+> 环境事实：`openai>=1.30` 实际安装 3.7.0（vendored httpx2），chat/completions 与异常层次兼容可用；锁已测版本待办。验证：全量 71 个测试通过（15 个 llm mock 测试不联网）。
 ## 5. LLM 输出的结构化约束（为什么不用裸 Markdown）
 
 LLM 输出**必须是 JSON**（json_mode），形如：

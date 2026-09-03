@@ -1,6 +1,6 @@
 # AI-TAE 项目 · 面试知识点与细节问答
 
-版本：v0.3（2026-09-03，随代码实时更新）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
+版本：v0.4（2026-09-03，随代码实时更新）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
 
 用法：面试前按第 9 节 checklist 过一遍；所有带【待实测】的数字，必须在真实跑通后填入，未填前不要对外说。
 
@@ -20,7 +20,7 @@
 
 | 版本 | 做什么 | 核心产出/证据 | 现状 |
 |---|---|---|---|
-| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建；parser（openapi + codec）已完成（主流程实现中） |
+| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建；parser + llm/client 已完成（主流程实现中） |
 | V2 | UI 失败自愈：KV→RAG→LLM→人工确认 | 自愈成功率、缓存命中率【待实测】 | 规划中 |
 | V3 | LLM-as-Judge + golden 评测 | judge 与人工一致率【待实测】 | 规划中 |
 
@@ -31,7 +31,9 @@
 - 被测项目已选定 manojnd9/todo_app（FastAPI），固定 commit f3cf7eeb...，本地 SQLite 跑通：4 个页面 200；注册 201、登录拿到 JWT、建待办 201、列表 200、查用户 200。
 - 已导出其 OpenAPI（17 个 path）到 samples/openapi/，作为 V1 输入素材。
 - V1 第一步 parser/openapi.py 已完成并验证（代码 src/aiae/parser/openapi.py，测试 tests/test_parser_openapi.py）：真实 OpenAPI 解析出 19 个 Operation / 17 path；支持 OpenAPI 3.x 与 Swagger 2.0（桥接）归一化。
-- V1 第二步 parser/codec.py 已完成并验证（代码 src/aiae/parser/codec.py，测试 tests/test_parser_codec.py）：LLM 文本剥围栏 → JSON 结构校验 → ast 静态校验 → 统一文件头落盘；错误信息精确到 tests[i] 供限次重试。全量 56 个测试通过。
+- V1 第二步 parser/codec.py 已完成并验证（代码 src/aiae/parser/codec.py，测试 tests/test_parser_codec.py）：LLM 文本剥围栏 → JSON 结构校验 → ast 静态校验 → 统一文件头落盘；错误信息精确到 tests[i] 供限次重试。
+- V1 第三步 llm/client.py 已完成并验证（代码 src/aiae/llm/client.py，测试 tests/test_llm_client.py）：关 SDK 自带重试自实现 429/5xx 退避（Retry-After 优先 + 指数退避 + 抖动）+ usage/latency/retries 记账；15 个 mock 测试全程不联网不烧钱。全量 71 个测试通过。
+- 依赖事实：本项目 openai>=1.30 实际装到 3.7.0（vendored httpx2），chat/completions 与异常层次兼容可用；这也是「自己依赖也要锁已测版本」的活教材。
 ## 三、讲解主线（按此讲故事，别背题）
 
 1. 背景：UI 自动化脆弱、AI 生成测试两大难题（跑不起来 / 无法证明能发现缺陷）、真 Bug 与 Flaky 难区分。
@@ -68,7 +70,7 @@
 
 #### Q6 429 怎么处理？重试会不会重复计费？
 
-答：只重试可安全重试的错误（429/5xx/连接超时），不重试 400/401 等请求错误；429 优先读 Retry-After，否则指数退避+抖动；每次调用记录 token 用量与重试次数，成本可核算。重复计费风险：请求已计费时盲目重试会二次计费，所以限定重试上限且只对服务端类错误重试。
+答：只重试可安全重试的错误（429/5xx/连接超时），不重试 400/401 等请求错误；429 优先读 Retry-After，否则指数退避+抖动；每次调用记录 token 用量与重试次数，成本可核算。重复计费风险：请求已计费时盲目重试会二次计费，所以限定重试上限且只对服务端类错误重试。（已落地：src/aiae/llm/client.py，关掉 SDK 自带重试自实现决策表；15 个 mock 测试不联网验证。）
 
 #### Q7 自愈的准确率/误修率？怎么防止把 Bug 当页面变化修掉？
 
@@ -130,6 +132,7 @@
 | 指标口径（分母是谁）？ | 可执行率=可执行/生成；通过率=通过/可执行，报数先报口径 | 直接说「口径我写在文档里」 |
 | parser 的 $ref / Swagger 2.0 怎么做？ | 防腐层归一化：文档内 $ref 递归解析（带栈防循环）+ 2.0 桥接成 3.x 复用同一套逻辑 | 指到 src/aiae/parser/openapi.py 与其测试 |
 | LLM 输出不守规矩怎么保证可执行率？ | codec：剥围栏→JSON 结构校验→ast 静态校验（语法/函数名/一致性）→统一文件头落盘，错误回传限次重试 | 指到 src/aiae/parser/codec.py 与其测试 |
+| LLM 重试策略怎么验证（不烧钱）？ | 注入 fake openai 对象抛真实异常类，断言重试次数/退避时长/sleep/记账；真实网络配 key 后手动验 | 指到 src/aiae/llm/client.py 与 tests/test_llm_client.py |
 | KV key 怎么设计？ | 错误类型+元素特征+页面指纹 组成签名 | 说思路即可，具体等数据 |
 | RAG 检索不到怎么办？ | 降级问 LLM；抽检人工评估检索质量 | 诚实说这是待评测项 |
 | golden 怎么防标注不一致？ | 规则先写死+双人抽检（自己与同学） | 说明标注流程比数字更重要 |
