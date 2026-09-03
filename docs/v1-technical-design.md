@@ -61,7 +61,7 @@ RunSummary → metrics（可执行率 / 通过率）
 | `parser.codec.parse_llm_output` | 文本→`GeneratedTest[]` | 剥离围栏、json 解析、结构校验 | ✅ 2026-09-03 |
 | `parser.codec.validate_code` | `GeneratedTest→errors[]` | ast 静态校验（语法/函数名/危险调用初筛） | ✅ 2026-09-03 |
 | `parser.codec.write_test_file` | `→Path` | 按 tag/模块组织落盘 | ✅ 2026-09-03 |
-| `generator.generate_for_operations` | `→GenerationReport` | 主流程编排 + 限次重试 | 任务 2 |
+| `generator.generate_for_operations` | `→GenerationReport` | 主流程编排 + 限次重试 | ✅ 2026-09-03 |
 | `runner.run_pytest` | `→RunSummary` | 执行生成用例，区分 passed/failed/errors | 任务 2 |
 | `metrics.Metrics` | 率值计算 | 口径统一，避免“数字对不上” | ✅ 已可用 |
 
@@ -87,6 +87,15 @@ RunSummary → metrics（可执行率 / 通过率）
 > 5. 记账内建：`LLMResponse{usage, latency_s, retries}`。
 >
 > 环境事实：`openai>=1.30` 实际安装 3.7.0（vendored httpx2），chat/completions 与异常层次兼容可用；锁已测版本待办。验证：全量 71 个测试通过（15 个 llm mock 测试不联网）。
+>
+> **实现记录（2026-09-03，任务 2 第四步）**：`generator/` 已落地，契约细化与关键决策：
+> 1. `generate_for_operations` 增加 keyword-only `spec_summary` / `client` 参数（client 可注入，测试用 fake；缺省从环境配置创建）；
+> 2. 双层重试语义分开：HTTP 层退避在 `llm/client`，语义层（输出不合格）在 generator——把精确错误追加进对话（assistant 坏输出 + user 错误原因）让模型对照改写，限次 `_GENERATION_RETRY_LIMIT=2`；
+> 3. 批处理容错：单个 operation 失败记入 `report.failed` 不中断整批；
+> 4. 落盘逐条独立文件（codec 契约本意）——曾试过「一 operation 一文件」与 codec 覆盖写语义冲突导致多用例互相覆盖丢数据，测试抓出后改回逐条文件；
+> 5. Prompt 精简：4xx/5xx 响应只留 description（嵌套 schema 占 token 对断言价值低），token 优化待端到端实测后再迭代。
+>
+> 验证：全量 80 个测试通过（9 个 generator mock 测试）。
 ## 5. LLM 输出的结构化约束（为什么不用裸 Markdown）
 
 LLM 输出**必须是 JSON**（json_mode），形如：

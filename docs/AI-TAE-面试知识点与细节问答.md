@@ -1,6 +1,6 @@
 # AI-TAE 项目 · 面试知识点与细节问答
 
-版本：v0.4（2026-09-03，随代码实时更新）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
+版本：v0.5（2026-09-03，随代码实时更新）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
 
 用法：面试前按第 9 节 checklist 过一遍；所有带【待实测】的数字，必须在真实跑通后填入，未填前不要对外说。
 
@@ -20,7 +20,7 @@
 
 | 版本 | 做什么 | 核心产出/证据 | 现状 |
 |---|---|---|---|
-| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建；parser + llm/client 已完成（主流程实现中） |
+| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建；parser + llm/client + generator 已完成（runner/metrics/cli 实现中） |
 | V2 | UI 失败自愈：KV→RAG→LLM→人工确认 | 自愈成功率、缓存命中率【待实测】 | 规划中 |
 | V3 | LLM-as-Judge + golden 评测 | judge 与人工一致率【待实测】 | 规划中 |
 
@@ -34,6 +34,7 @@
 - V1 第二步 parser/codec.py 已完成并验证（代码 src/aiae/parser/codec.py，测试 tests/test_parser_codec.py）：LLM 文本剥围栏 → JSON 结构校验 → ast 静态校验 → 统一文件头落盘；错误信息精确到 tests[i] 供限次重试。
 - V1 第三步 llm/client.py 已完成并验证（代码 src/aiae/llm/client.py，测试 tests/test_llm_client.py）：关 SDK 自带重试自实现 429/5xx 退避（Retry-After 优先 + 指数退避 + 抖动）+ usage/latency/retries 记账；15 个 mock 测试全程不联网不烧钱。全量 71 个测试通过。
 - 依赖事实：本项目 openai>=1.30 实际装到 3.7.0（vendored httpx2），chat/completions 与异常层次兼容可用；这也是「自己依赖也要锁已测版本」的活教材。
+- V1 第四步 generator 已完成并验证（代码 src/aiae/generator/__init__.py，测试 tests/test_generator.py）：编排 Operation → Prompt → LLM → codec 校验 → 不合格带精确错误回传、语义层限次（≤2 次）改写 → 逐条落盘 + GenerationReport；批处理单点失败不中断。9 个 mock 测试（fake LLM 按剧本表演）全量 80 个通过。
 ## 三、讲解主线（按此讲故事，别背题）
 
 1. 背景：UI 自动化脆弱、AI 生成测试两大难题（跑不起来 / 无法证明能发现缺陷）、真 Bug 与 Flaky 难区分。
@@ -66,7 +67,7 @@
 
 #### Q5 LLM 生成的用例可执行率多少？怎么提高？
 
-答：【待实测】。提高手段（设计上已定）：LLM 输出必须是结构化 JSON（不是裸 Markdown）；本地 ast 静态校验 + 结构校验；失败时把精确错误回传做限次重试；落盘后统一文件头与 conftest 约定，消除低级错误。
+答：【待实测】。提高手段（设计上已定）：LLM 输出必须是结构化 JSON（不是裸 Markdown）；本地 ast 静态校验 + 结构校验；失败时把精确错误回传做限次重试；落盘后统一文件头与 conftest 约定，消除低级错误。（已落地：src/aiae/parser/codec.py + src/aiae/generator/——语义层限次重试会把「结构/代码校验失败原因」追加进对话让模型对照改写。）
 
 #### Q6 429 怎么处理？重试会不会重复计费？
 
@@ -133,6 +134,7 @@
 | parser 的 $ref / Swagger 2.0 怎么做？ | 防腐层归一化：文档内 $ref 递归解析（带栈防循环）+ 2.0 桥接成 3.x 复用同一套逻辑 | 指到 src/aiae/parser/openapi.py 与其测试 |
 | LLM 输出不守规矩怎么保证可执行率？ | codec：剥围栏→JSON 结构校验→ast 静态校验（语法/函数名/一致性）→统一文件头落盘，错误回传限次重试 | 指到 src/aiae/parser/codec.py 与其测试 |
 | LLM 重试策略怎么验证（不烧钱）？ | 注入 fake openai 对象抛真实异常类，断言重试次数/退避时长/sleep/记账；真实网络配 key 后手动验 | 指到 src/aiae/llm/client.py 与 tests/test_llm_client.py |
+| generator 怎么保证生成质量 / 怎么测？ | 编排：Prompt→LLM→codec 校验→不合格带错误回传限次改写；注入 fake LLM 按剧本返回坏/好输出验证重试与报告 | 指到 src/aiae/generator/__init__.py 与 tests/test_generator.py |
 | KV key 怎么设计？ | 错误类型+元素特征+页面指纹 组成签名 | 说思路即可，具体等数据 |
 | RAG 检索不到怎么办？ | 降级问 LLM；抽检人工评估检索质量 | 诚实说这是待评测项 |
 | golden 怎么防标注不一致？ | 规则先写死+双人抽检（自己与同学） | 说明标注流程比数字更重要 |
