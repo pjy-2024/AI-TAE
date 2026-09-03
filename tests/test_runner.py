@@ -62,7 +62,9 @@ def test_parse_junit_empty_suite(tmp_path):
 def test_ensure_conftest_writes_once_and_preserves_edits(tmp_path):
     _ensure_conftest(tmp_path)
     first = (tmp_path / "conftest.py").read_text(encoding="utf-8")
-    assert "def base_url()" in first  # 模板含 base_url fixture
+    assert "def base_url()" in first          # 模板含 base_url fixture
+    assert "def registered_user(" in first     # 模板含随机用户 fixture
+    assert "def auth_headers(" in first        # 模板含鉴权头 fixture
 
     # 人工改过后再次 run 不应覆盖
     (tmp_path / "conftest.py").write_text("# 人工修改", encoding="utf-8")

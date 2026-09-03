@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -27,6 +30,11 @@ def _project_root() -> str:
     """src/aiae/config.py 向上三级即项目根目录（含 pyproject.toml 的那一层）。"""
     here = os.path.dirname(os.path.abspath(__file__))          # .../src/aiae
     return os.path.dirname(os.path.dirname(here))              # 项目根
+
+
+# 项目级 .env（已 gitignore）在读取任何 AITAE_* 前加载。
+# override=False：已存在的真实环境变量优先，.env 不覆盖（便于 CI/部署注入）。
+load_dotenv(Path(_project_root()) / ".env", override=False)
 
 
 @dataclass(frozen=True)

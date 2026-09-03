@@ -160,6 +160,7 @@ def test_write_file_default_naming_and_header(tmp_path):
     assert target.name == "test_create_todo.py"
     text = target.read_text(encoding="utf-8")
     assert "import requests" in text                # 统一文件头
+    assert "import uuid" in text                       # 随机数据（可重复执行）
     assert "method=POST" in text and "path=/todos" in text  # 元数据注释
     assert "def test_create_todo" in text           # 源码正文
     # 落盘文件本身仍可通过静态校验（端到端自洽）

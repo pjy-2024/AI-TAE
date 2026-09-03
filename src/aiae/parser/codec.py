@@ -167,6 +167,7 @@ _TEST_FILE_HEADER = """# AI-TAE 自动生成（草稿）· 人工审阅确认后
 # method={method}  path={path}  description={description}
 
 import requests
+import uuid  # 供创建类用例生成随机数据（避免重复执行冲突）
 
 """
 

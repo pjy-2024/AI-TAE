@@ -55,6 +55,9 @@ _SYSTEM_PROMPT = f"""你是一名资深接口测试工程师。根据给定的 O
    - 请求路径写 f"{{base_url}}/实际路径"（base_url 是 pytest fixture，不含结尾斜杠）
    - JSON 请求体用 requests.post(url, json=...)；表单请求体用 requests.post(url, data=...)
    - 用 assert 断言状态码，必要时断言响应体关键字段
+   - 若请求会创建/修改数据，业务字段（用户名、邮箱、标题等）用随机唯一值，
+     例如 username=f"u{{uuid.uuid4().hex[:8]}}"、title=f"t-{{uuid.uuid4().hex[:6]}}"，
+     保证用例重复执行不冲突（文件头已 import uuid）
 4. name 必须与 code 里的函数名完全一致。
 """
 
@@ -76,6 +79,56 @@ def _op_for_prompt(operation: Operation) -> dict[str, Any]:
     return data
 
 
+def _interface_instruction(operation: Operation) -> str:
+    """按接口类型给 LLM 的鉴权/登录/资源指令（与 runner conftest 的 fixture 配套）。
+
+    优先级（互斥，按特征识别接口类型）：
+    1. 登录类：无 security + 表单请求体（OAuth2 password 流特征）-> fresh_user（每次新建，防共享污染）；
+    2. 资源 id 类：需认证且 path 形参以 id 结尾（如 {todo_id}）-> auth_headers + created_todo_id；
+    3. 普通需认证 -> auth_headers；
+    4. 其余开放接口无附加指令。
+    """
+    request_body = operation.request_body or {}
+    media_types = (request_body.get("content") or {}).keys()
+    form_like = any("x-www-form-urlencoded" in m or "multipart" in m for m in media_types)
+
+    # 1) 登录类（无 security + form 请求体）
+    if not operation.security and form_like:
+        return (
+            "该接口是登录/获取令牌类（表单请求体）。请让用例函数签名包含 fresh_user 参数"
+            "（pytest fixture，每次新建的已注册用户 dict，含 username/password），"
+            "用 fresh_user['username'] 与 fresh_user['password'] 作为表单值，"
+            "不要用写死的账号。"
+        )
+    if not operation.security:
+        return ""
+
+    # 2) 资源 id 类：path 形参名以 id 结尾（如 {todo_id}）
+    id_params = [
+        p.get("name")
+        for p in operation.parameters
+        if p.get("in") == "path" and str(p.get("name", "")).lower().endswith("id")
+    ]
+    if id_params:
+        return (
+            "鉴权要求：该接口需要登录认证，且操作的是当前用户已存在的资源"
+            "（path 形参 {"
+            + ", ".join(str(n) for n in id_params)
+            + "} 是资源 id）。请让用例函数签名包含 auth_headers 与 created_todo_id 两个参数"
+            "（pytest fixture：auth_headers 是登录后的请求头；created_todo_id 已为当前用户创建好一条待办、"
+            "返回其 id）。请求传 headers=auth_headers，并把资源 id 位置用 created_todo_id 传入，"
+            "不要用写死的 id。"
+        )
+
+    # 3) 普通需认证
+    return (
+        "鉴权要求：该接口需要登录认证。请让用例函数签名包含 auth_headers 参数"
+        "（pytest fixture，已是登录后的请求头 dict），并在每个请求传 headers=auth_headers。"
+        "不要自己实现注册或登录。"
+    )
+
+
+
 def build_messages(
     operation: Operation,
     spec_summary: dict[str, Any],
@@ -92,6 +145,9 @@ def build_messages(
     user_lines = [f"被测服务：{title}（version={version}）"]
     if base_url_hint:
         user_lines.append(f"服务地址提示：{base_url_hint}（仅参考，测试里统一用 base_url fixture）")
+    instruction = _interface_instruction(operation)
+    if instruction:
+        user_lines.append(instruction)
     user_lines.append("请为以下接口生成用例：")
     user_lines.append(op_text)
 
@@ -154,10 +210,12 @@ def _generate_one(
             messages = _with_feedback(messages, response.content, last_feedback)
             continue
 
-        # 校验全过 -> 逐条落盘。codec 按单条用例写独立文件（test_<name>.py，覆盖写幂等），
-        # 同一接口返回多场景时拆成多个文件，天然避免「同文件覆盖丢数据」。
+        # 校验全过 -> 逐条落盘。文件名用「operation_id + test.name」唯一键：
+        # - operation_id 全局唯一 -> 不同接口即使 LLM 起了同名 test 函数也不互相覆盖（真实踩过：19 成功只落 18 文件）；
+        # - test.name 区分同一接口的多场景 -> 不互相覆盖；
+        # - 同一接口同一场景重跑 = 同文件覆盖写（草稿幂等）。
         for test in valid:
-            write_test_file(test, out_dir)
+            write_test_file(test, out_dir, module_name=f"{operation.operation_id}__{test.name}")
         return len(valid), attempt, None
 
     return 0, _GENERATION_RETRY_LIMIT, f"重试 {_GENERATION_RETRY_LIMIT} 次后仍失败：{last_feedback}"

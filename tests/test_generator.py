@@ -76,6 +76,68 @@ def test_build_messages_structure_and_content():
     assert "create_todo" in user
 
 
+def test_build_messages_secured_operation_gets_auth_instruction():
+    # security 非空 -> 提示用 auth_headers fixture
+    secured = _op(security=[{"OAuth2PasswordBearer": []}])
+    messages = build_messages(secured, {})
+    user = messages[1]["content"]
+    assert "auth_headers" in user
+    assert "headers=auth_headers" in user
+
+
+def test_build_messages_login_operation_gets_fresh_user():
+    # 无 security + form 请求体（登录类）-> 提示用 fresh_user（每次新建，防共享污染）
+    login = Operation(
+        method="POST",
+        path="/auth/token",
+        operation_id="login",
+        request_body={
+            "required": True,
+            "content": {
+                "application/x-www-form-urlencoded": {"schema": {"type": "object"}}
+            },
+        },
+        responses={},
+    )
+    messages = build_messages(login, {})
+    user = messages[1]["content"]
+    assert "fresh_user" in user
+    assert "不要用写死的账号" in user
+
+
+def test_build_messages_resource_id_operation_gets_created_todo():
+    # 需认证 + path 形参以 id 结尾（{todo_id}）-> 提示用 created_todo_id，不写死 id
+    op = Operation(
+        method="PUT",
+        path="/todos/todo/{todo_id}",
+        operation_id="update_todo",
+        security=[{"OAuth2PasswordBearer": []}],
+        parameters=[
+            {
+                "name": "todo_id",
+                "in": "path",
+                "required": True,
+                "schema": {"type": "integer"},
+            }
+        ],
+        responses={},
+    )
+    messages = build_messages(op, {})
+    user = messages[1]["content"]
+    assert "auth_headers" in user
+    assert "created_todo_id" in user
+    assert "不要用写死的 id" in user
+
+
+def test_build_messages_open_operation_no_auth_instruction():
+    # 开放接口（无 security、json body 注册类）-> 不给鉴权/登录指令
+    open_op = _op()  # security=[] 且 request_body=None
+    messages = build_messages(open_op, {})
+    user = messages[1]["content"]
+    assert "auth_headers" not in user
+    assert "registered_user" not in user
+
+
 def test_build_messages_trims_non_2xx_response_schema():
     op = _op(
         responses={
@@ -105,7 +167,8 @@ def test_generate_success_single(tmp_path):
     assert report.retry_counts == [0]                   # 一次成功，无重试
     files = list(tmp_path.glob("*.py"))
     assert len(files) == 1
-    assert files[0].name == "test_create_todo.py"       # 一 operation 一文件
+    # 唯一键命名：operation_id + test.name（防不同接口同名函数互相覆盖）
+    assert files[0].name == "test_create_todo__test_create_todo.py"
     # fake 收到的调用带 json_mode=True
     assert fake.calls[0][1]["json_mode"] is True
 
@@ -178,10 +241,13 @@ def test_generate_multiple_tests_multiple_files(tmp_path):
     report = generate_for_operations([_op()], out_dir=tmp_path, client=fake)
     assert report.succeeded == 2
     files = sorted(p.name for p in tmp_path.glob("*.py"))
-    assert files == ["test_create_todo.py", "test_create_todo_missing_title.py"]
+    assert files == [
+        "test_create_todo__test_create_todo.py",
+        "test_create_todo__test_create_todo_missing_title.py",
+    ]
     texts = {p.name: p.read_text(encoding="utf-8") for p in tmp_path.glob("*.py")}
-    assert "def test_create_todo(" in texts["test_create_todo.py"]
-    assert "def test_create_todo_missing_title(" in texts["test_create_todo_missing_title.py"]
+    assert "def test_create_todo(" in texts["test_create_todo__test_create_todo.py"]
+    assert "def test_create_todo_missing_title(" in texts["test_create_todo__test_create_todo_missing_title.py"]
 
 
 def test_generate_empty_operations(tmp_path):
