@@ -105,6 +105,13 @@ RunSummary → metrics（可执行率 / 通过率）
 > 5. 踩坑：collection error 默认中断整批（一个文件 import 坏，后面的全不跑）→ 加 `--continue-on-collection-errors`，坏文件只计 error。
 >
 > 验证：全量 88 个测试通过（8 个 runner 测试，含真实子进程集成样例）。
+>
+> **实现记录（2026-09-03，任务 2 第六步）**：`cli.py` 已落地（V1 机械部分完成）：
+> 1. `aiae generate [--openapi] [--out-dir]`：前置校验 `AITAE_LLM_API_KEY`（未配置友好报错，不启动整批空转）；读 OpenAPI → Operation[] → generate_for_operations → 打印 GenerationReport；
+> 2. `aiae run [--dir] [--junit-xml]`：run_pytest → Metrics，报数先报口径（generated≈pytest 收集总数，精确值来自 generate 阶段 report，跨命令传递待端到端再定）；可执行=passed+failed，error 属不可执行类；
+> 3. 缺省路径全部指向项目约定（OpenAPI=samples/openapi/todo_app-openapi.json、产物=data/generated_tests、junit=data/runs/latest.xml），均可用参数覆盖。
+>
+> 验证：全量 95 个测试通过（7 个 cli 测试）。cli 三命令已真实冒烟（selfcheck / 无 key generate / 无目录 run）。
 ## 5. LLM 输出的结构化约束（为什么不用裸 Markdown）
 
 LLM 输出**必须是 JSON**（json_mode），形如：

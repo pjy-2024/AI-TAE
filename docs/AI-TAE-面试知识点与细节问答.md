@@ -1,6 +1,6 @@
 # AI-TAE 项目 · 面试知识点与细节问答
 
-版本：v0.6（2026-09-03，随代码实时更新）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
+版本：v0.7（2026-09-03，随代码实时更新）｜配套仓库：AI-TAE（github / gitee / gitcode）｜面向：软件测试 / 测试开发 / 后端研发实习与春招
 
 用法：面试前按第 9 节 checklist 过一遍；所有带【待实测】的数字，必须在真实跑通后填入，未填前不要对外说。
 
@@ -20,7 +20,7 @@
 
 | 版本 | 做什么 | 核心产出/证据 | 现状 |
 |---|---|---|---|
-| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建；parser + llm/client + generator + runner 已完成（cli/端到端实现中） |
+| V1 | OpenAPI → 自动生成可执行 pytest 用例 | 可执行率 / 通过率【待实测】 | 骨架已建；V1 机械部分（parser + codec + llm + generator + runner + cli）已完成，端到端真实验证中 |
 | V2 | UI 失败自愈：KV→RAG→LLM→人工确认 | 自愈成功率、缓存命中率【待实测】 | 规划中 |
 | V3 | LLM-as-Judge + golden 评测 | judge 与人工一致率【待实测】 | 规划中 |
 
@@ -35,7 +35,8 @@
 - V1 第三步 llm/client.py 已完成并验证（代码 src/aiae/llm/client.py，测试 tests/test_llm_client.py）：关 SDK 自带重试自实现 429/5xx 退避（Retry-After 优先 + 指数退避 + 抖动）+ usage/latency/retries 记账；15 个 mock 测试全程不联网不烧钱。全量 71 个测试通过。
 - 依赖事实：本项目 openai>=1.30 实际装到 3.7.0（vendored httpx2），chat/completions 与异常层次兼容可用；这也是「自己依赖也要锁已测版本」的活教材。
 - V1 第四步 generator 已完成并验证（代码 src/aiae/generator/__init__.py，测试 tests/test_generator.py）：编排 Operation → Prompt → LLM → codec 校验 → 不合格带精确错误回传、语义层限次（≤2 次）改写 → 逐条落盘 + GenerationReport；批处理单点失败不中断。9 个 mock 测试（fake LLM 按剧本表演）全量 80 个通过。
-- V1 第五步 runner 已完成并验证（代码 src/aiae/runner/__init__.py，测试 tests/test_runner.py）：子进程跑 pytest + junitxml 收集（passed/failed/errors/耗时），自动确保 conftest(base_url)；踩坑记录：--rootdir 防无权限目录扫描、--continue-on-collection-errors 防一个坏文件中断整批。全量 88 个测试通过。
+- V1 第五步 runner 已完成并验证（代码 src/aiae/runner/__init__.py，测试 tests/test_runner.py）：子进程跑 pytest + junitxml 收集（passed/failed/errors/耗时），自动确保 conftest(base_url)；踩坑记录：--rootdir 防无权限目录扫描、--continue-on-collection-errors 防一个坏文件中断整批。
+- V1 第六步 cli 已完成并验证（代码 src/aiae/cli.py，测试 tests/test_cli.py）：`aiae generate / run / selfcheck` 串起 V1 全流程；generate 前置校验 API Key；run 报数先报口径。全量 95 个测试通过；cli 三命令已真实冒烟。V1 机械部分至此完成，剩端到端（配 key + 起被测服务）填【待实测】数字。
 ## 三、讲解主线（按此讲故事，别背题）
 
 1. 背景：UI 自动化脆弱、AI 生成测试两大难题（跑不起来 / 无法证明能发现缺陷）、真 Bug 与 Flaky 难区分。
