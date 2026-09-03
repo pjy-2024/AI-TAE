@@ -1,6 +1,7 @@
 # AI 智能测试辅助引擎（AI-TAE）
 
-> 状态：**骨架阶段 v0.1**（目录与接口契约已建，业务代码未开始）
+> 状态：**V1 已端到端跑通**（2026-09-03 真实：todo_app 19 个接口自动生成 + 执行，可执行率与通过率均 19/19=100%，连跑两次可复现）
+> 之前版本的进度快照见 docs/progress-2026-09-03.md
 > 给 AI 助手的协作指引见 [AGENTS.md](AGENTS.md) ｜ 阶段进度见 [docs/progress-2026-09-03.md](docs/progress-2026-09-03.md)
 > 项目说明书与上下文交接：`AI-TAE-项目说明书与上下文交接.md` ｜ V1 技术方案：[docs/v1-technical-design.md](docs/v1-technical-design.md)
 
@@ -55,6 +56,26 @@ python -m pip install -r requirements-dev.txt
 python -m pip install -e .
 aiae selfcheck
 python -m pytest -q
+```
+
+### 配置 LLM Key（真实生成前）
+
+```powershell
+Copy-Item .env.example .env   # 首次复制
+notepad .env                  # 填入 AITAE_LLM_API_KEY，并把 AITAE_TARGET_BASE_URL 指向被测服务
+```
+
+- `.env` 已被 gitignore，**不会入库**；仓库内所有示例只保留 `sk-你的key` 占位，真实 key 只存在于本地 `.env`。
+- 若 key 曾出现在聊天/日志等外部环境，安全做法是去服务商后台**作废重建**一把新 key 再更新 `.env`。
+
+### V1 跑一轮（真实）
+
+```powershell
+# 0) 先启动被测项目 todo_app（在 data/targets/todo_app 内，见 samples/README.md），端口与 .env 的 AITAE_TARGET_BASE_URL 一致
+# 1) 真实生成（调 DeepSeek，需 .env 已配 key）
+aiae generate
+# 2) 真实执行并统计指标（可执行率 / 通过率，报数先报口径）
+aiae run
 ```
 
 > 依赖清单约定：requirements.txt = 运行时；requirements-dev.txt = 运行时 + 测试；V2 再引入 requirements-v2.txt（diskcache/chromadb/playwright）。权威来源是 pyproject.toml。
