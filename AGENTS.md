@@ -10,7 +10,8 @@ AI 智能测试辅助引擎：V1 接口用例自动生成（OpenAPI → pytest�
 
 ## 进入项目后请先读这些文件（全部上下文都在仓库里）
 
-- docs/progress-2026-09-03.md —— 阶段进度与交接（最新，优先读）
+- docs/progress-2026-09-04.md —— 阶段进度与交接（最新，优先读；第二被测项目适配验证）
+- docs/progress-2026-09-03.md —— 上一阶段（V1 端到端 + V2 自愈）
 - AI-TAE-项目说明书与上下文交接.md —— 项目总纲（版本规划 / 面试 / 红线）
 - docs/v1-technical-design.md —— V1 技术方案（接口契约 / 数据流 / 指标口径）
 - samples/README.md —— 被测项目记录与固定 commit
@@ -22,7 +23,7 @@ AI 智能测试辅助引擎：V1 接口用例自动生成（OpenAPI → pytest�
 2. 真实数字纪律：一切指标先以【待实测】占位，禁止编造任何数字、成果、commit 历史。
 3. 时间盒：考研初试（约 2026-12）前只做轻量工作；V1 大代码留到初试后集中做。
    任何「顺手多做」的需求先说明成本，再决定是否做。
-4. 被测项目：manojnd9/todo_app，固定 commit f3cf7eeb...，快照在 data/targets/todo_app（gitignore 不入库）；
+4. 被测项目（两个，详见 samples/README.md）：① manojnd9/todo_app（有认证，password 形态），固定 commit f3cf7eeb...，快照 data/targets/todo_app；② lymanny/FastAPI-CRUD-Todo（无认证，auth_mode=none 退化形态），固定 commit 0ccc618...，快照 data/targets/fastapi_crud_todo。均 gitignore 不入库；
    依赖按其 lock 时代版本运行，不要追最新（详见 progress 文档「依赖漂移」）。
 5. 环境：C 盘独立 Python 3.12（C:\Users\彭井艺\AppData\Local\Programs\Python\python312），
    项目 venv 在根目录 .venv；安装依赖用清华镜像 https://pypi.tuna.tsinghua.edu.cn/simple。

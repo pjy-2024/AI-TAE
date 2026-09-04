@@ -27,61 +27,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from aiae.config import PathsConfig
+from aiae.targets import TargetAdapter, get_adapter
 
 # runner 自动写入的 conftest（只写一次，人工改过不覆盖）。
 # 注意：conftest 是「运行约定」，模板升级后旧自动生成的 conftest 需删除才会按新模板重建。
-# conftest 模板：通用骨架，运行时 import 被测项目适配器（aiae.targets）。
-# 框架代码不再含被测项目硬编码 —— 换被测项目换 AITAE_TARGET 指向的适配器即可。
-_CONFTEST_TEMPLATE = '''"""AI-TAE 运行约定（runner 自动生成，可人工修改）。
-
-fixtures 由被测项目适配器驱动（src/aiae/targets/，AITAE_TARGET 选择）：
-- 框架不含被测项目硬编码；换被测项目 = 换适配器，本文件无需改。
-- base_url   : 被测服务地址（AITAE_TARGET_BASE_URL，缺省取适配器默认端口）
-- registered_user : session 级用户（角色取适配器 auth_role）
-- fresh_user : function 级随机普通用户（登录类用例用，自包含防共享污染）
-- auth_headers : registered_user 登录后的 Authorization 头（需认证接口用）
-- <资源 fixture> : 按适配器 resource 能力动态注册（如 {todo_id} 接口用）
-
-生成用例签名约定（与 generator 的 Prompt 配套）：
-- 开放接口   : def test_xxx(base_url)
-- 需认证接口 : def test_xxx(base_url, auth_headers)
-- 登录类接口 : def test_xxx(base_url, fresh_user)
-- 资源 id 接口 : def test_xxx(base_url, auth_headers, <资源 fixture>)
-"""
-import os
-import uuid
-
-import pytest
-import requests
-
-from aiae.targets import get_adapter
-
-ADAPTER = get_adapter()  # AITAE_TARGET，缺省 todo_app
+# conftest 模板：通用骨架，按被测项目适配器（aiae.targets，AITAE_TARGET 选择）的
+# auth_mode 渲染 —— 有认证被测（password）生成注册/登录/鉴权 fixtures；
+# 无认证被测（none）只给 base_url（框架退化）。框架代码不含被测项目硬编码。
 
 
-@pytest.fixture(scope="session")
-def base_url() -> str:
-    return os.getenv("AITAE_TARGET_BASE_URL") or ADAPTER.default_base_url
-
-
-@pytest.fixture(scope="session")
-def registered_user(base_url) -> dict:
-    """session 级用户：角色取适配器 auth_role（todo_app 为 admin，可通吃普通+admin 接口）。"""
-    return ADAPTER.register_user(base_url, role=ADAPTER.auth_role)
-
-
-@pytest.fixture
-def fresh_user(base_url) -> dict:
-    """function 级随机普通用户：登录类用例用（每次新建，不受其他用例改状态影响）。"""
-    return ADAPTER.register_user(base_url, role="user")
-
-
-@pytest.fixture(scope="session")
-def auth_headers(base_url, registered_user) -> dict:
-    """用 registered_user 登录，返回带 Bearer token 的请求头。"""
-    token = ADAPTER.login_token(base_url, registered_user["username"], registered_user["password"])
-    return {"Authorization": f"Bearer {token}"}
-
+# 资源级 fixture 片段（password 且适配器声明 resource 时追加；fixture 名取适配器声明）
+_RESOURCE_FIXTURE_SNIPPET = """
 
 # 资源级 fixture：仅当被测适配器声明了 resource 能力时注册（fixture 名取适配器声明）
 if ADAPTER.resource is not None:
@@ -92,7 +48,102 @@ if ADAPTER.resource is not None:
         return _RESOURCE.create_id(base_url, auth_headers, seed=f"seed-{uuid.uuid4().hex[:6]}")
 
     globals()[_RESOURCE.fixture_name] = _resource_id
-'''
+"""
+
+def _conftest_source(adapter: TargetAdapter) -> str:
+    """按适配器契约渲染 conftest 源码（auth_mode 决定注册哪些 fixtures）。
+
+    - password：base_url + registered_user / fresh_user / auth_headers（+ 资源 fixture）；
+    - none    ：只 base_url（被测无认证，生成用例全部按开放接口，签名只有 base_url）。
+    """
+    auth_mode = adapter.auth_mode
+    doc_lines = [
+        '"""AI-TAE 运行约定（runner 自动生成，可人工修改）。',
+        "",
+        "fixtures 由被测项目适配器驱动（src/aiae/targets/，AITAE_TARGET 选择）：",
+        "- 框架不含被测项目硬编码；换被测项目 = 换适配器，本文件无需改。",
+        "- base_url   : 被测服务地址（AITAE_TARGET_BASE_URL，缺省取适配器默认端口）",
+    ]
+    if auth_mode == "none":
+        doc_lines += [
+            "- 被测无认证（auth_mode=none）：不注册登录/鉴权 fixtures；",
+            "  生成用例全部按开放接口（签名只有 base_url）。",
+        ]
+        doc_lines.append('"""')
+        body_lines = [
+            "import os",
+            "",
+            "import pytest",
+            "",
+            "from aiae.targets import get_adapter",
+            "",
+            "ADAPTER = get_adapter()  # AITAE_TARGET",
+            "",
+            "",
+            '@pytest.fixture(scope="session")',
+            "def base_url() -> str:",
+            '    return os.getenv("AITAE_TARGET_BASE_URL") or ADAPTER.default_base_url',
+            "",
+        ]
+        return "\n".join(doc_lines) + "\n" + "\n".join(body_lines)
+
+    # password 形态
+    doc_lines += [
+        "- registered_user : session 级用户（角色取适配器 auth_role）",
+        "- fresh_user : function 级随机普通用户（登录类用例用，自包含防共享污染）",
+        "- auth_headers : registered_user 登录后的请求头（需认证接口用）",
+    ]
+    if adapter.resource is not None:
+        doc_lines.append(f"- {adapter.resource.fixture_name} : 按适配器 resource 能力动态注册（资源 id 类接口用）")
+    doc_lines += [
+        "",
+        "生成用例签名约定（与 generator 的 Prompt 配套，文案由适配器指令钩子描述）：",
+        "- 开放接口   : def test_xxx(base_url)",
+        "- 需认证接口 : def test_xxx(base_url, auth_headers)",
+        "- 登录类接口 : def test_xxx(base_url, fresh_user)",
+    ]
+    if adapter.resource is not None:
+        doc_lines.append(f"- 资源 id 接口 : def test_xxx(base_url, auth_headers, {adapter.resource.fixture_name})")
+    doc_lines.append('"""')
+
+    body_lines = [
+        "import os",
+        "import uuid",
+        "",
+        "import pytest",
+        "",
+        "from aiae.targets import get_adapter",
+        "",
+        "ADAPTER = get_adapter()  # AITAE_TARGET",
+        "",
+        "",
+        '@pytest.fixture(scope="session")',
+        "def base_url() -> str:",
+        '    return os.getenv("AITAE_TARGET_BASE_URL") or ADAPTER.default_base_url',
+        "",
+        "",
+        '@pytest.fixture(scope="session")',
+        "def registered_user(base_url) -> dict:",
+        '    """session 级用户：角色取适配器 auth_role（被测若 admin 可通吃普通+admin 接口则设 admin）。"""',
+        "    return ADAPTER.register_user(base_url, role=ADAPTER.auth_role)",
+        "",
+        "",
+        "@pytest.fixture",
+        "def fresh_user(base_url) -> dict:",
+        '    """function 级随机普通用户：登录类用例用（每次新建，不受其他用例改状态影响）。"""',
+        '    return ADAPTER.register_user(base_url, role="user")',
+        "",
+        "",
+        '@pytest.fixture(scope="session")',
+        "def auth_headers(base_url, registered_user) -> dict:",
+        '    """用 registered_user 登录，按适配器契约包装成请求头。"""',
+        '    token = ADAPTER.login_token(base_url, registered_user["username"], registered_user["password"])',
+        "    return ADAPTER.build_auth_headers(token)",
+        "",
+    ]
+    if adapter.resource is not None:
+        body_lines.append(_RESOURCE_FIXTURE_SNIPPET.lstrip("\n"))
+    return "\n".join(doc_lines) + "\n" + "\n".join(body_lines)
 
 
 @dataclass
@@ -107,11 +158,17 @@ class RunSummary:
     durations_s: dict[str, float] = field(default_factory=dict)  # test nodeid -> 耗时
 
 
-def _ensure_conftest(generated_dir: Path) -> Path:
-    """确保 base_url fixture 存在：没有才写模板，已存在（可能人工改过）不覆盖。"""
+def _ensure_conftest(
+    generated_dir: Path, *, adapter: TargetAdapter | None = None
+) -> Path:
+    """确保 base_url fixture 存在：没有才按适配器契约写模板，已存在（可能人工改过）不覆盖。
+
+    adapter 缺省取当前 AITAE_TARGET（与 generator 同一选择源）。
+    """
     conftest = generated_dir / "conftest.py"
     if not conftest.exists():
-        conftest.write_text(_CONFTEST_TEMPLATE, encoding="utf-8")
+        adapter = adapter or get_adapter()
+        conftest.write_text(_conftest_source(adapter), encoding="utf-8")
     return conftest
 
 

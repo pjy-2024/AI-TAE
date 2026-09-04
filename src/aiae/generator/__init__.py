@@ -26,6 +26,7 @@ from aiae.parser.codec import (
     write_test_file,
 )
 from aiae.parser.openapi import Operation
+from aiae.targets import TargetAdapter, get_adapter
 
 # 单个 operation 的「LLM 产出不合格 -> 带错误信息改写」上限（首次 + 最多 2 次改写）
 _GENERATION_RETRY_LIMIT = 2
@@ -79,65 +80,60 @@ def _op_for_prompt(operation: Operation) -> dict[str, Any]:
     return data
 
 
-def _interface_instruction(operation: Operation) -> str:
+def _interface_instruction(operation: Operation, adapter: TargetAdapter) -> str:
     """按接口类型给 LLM 的鉴权/登录/资源指令（与 runner conftest 的 fixture 配套）。
 
-    优先级（互斥，按特征识别接口类型）：
-    1. 登录类：无 security + 表单请求体（OAuth2 password 流特征）-> fresh_user（每次新建，防共享污染）；
-    2. 资源 id 类：需认证且 path 形参以 id 结尾（如 {todo_id}）-> auth_headers + created_todo_id；
-    3. 普通需认证 -> auth_headers；
+    核心只负责「识别接口类型」（基于 OpenAPI 特征的通用规则）；被测特定的
+    「fixture 怎么用」文案一律从适配器取（TargetAdapter 的 login_instruction /
+    auth_instruction / resource_id_instruction 钩子）——被测假设全部收敛在 targets 层。
+
+    优先级（互斥，按特征识别接口类型；auth_mode="none" 时全部按开放接口退化）：
+    1. 登录类：password 形态 + 无 security + 表单请求体（OAuth2 password 流特征）
+       -> 适配器 login_instruction（todo 用 fresh_user，每次新建防共享污染）；
+    2. 资源 id 类：需认证且 path 形参以 id 结尾（如 {todo_id}）且适配器声明了 resource
+       -> 适配器 resource_id_instruction（todo 用 auth_headers + created_todo_id）；
+    3. 普通需认证 -> 适配器 auth_instruction（auth_headers）；
     4. 其余开放接口无附加指令。
     """
+    if adapter.auth_mode == "none":
+        # 无认证被测：没有登录/鉴权概念，接口全部按开放接口处理（框架可退化）
+        return ""
+
     request_body = operation.request_body or {}
     media_types = (request_body.get("content") or {}).keys()
     form_like = any("x-www-form-urlencoded" in m or "multipart" in m for m in media_types)
 
-    # 1) 登录类（无 security + form 请求体）
+    # 1) 登录类（无 security + form 请求体）-> 适配器文案（todo: fresh_user）
     if not operation.security and form_like:
-        return (
-            "该接口是登录/获取令牌类（表单请求体）。请让用例函数签名包含 fresh_user 参数"
-            "（pytest fixture，每次新建的已注册用户 dict，含 username/password），"
-            "用 fresh_user['username'] 与 fresh_user['password'] 作为表单值，"
-            "不要用写死的账号。"
-        )
+        return adapter.login_instruction()
     if not operation.security:
         return ""
 
-    # 2) 资源 id 类：path 形参名以 id 结尾（如 {todo_id}）
+    # 2) 资源 id 类：需认证 + path 形参名以 id 结尾 + 适配器有资源语义
     id_params = [
         p.get("name")
         for p in operation.parameters
         if p.get("in") == "path" and str(p.get("name", "")).lower().endswith("id")
     ]
-    if id_params:
-        return (
-            "鉴权要求：该接口需要登录认证，且操作的是当前用户已存在的资源"
-            "（path 形参 {"
-            + ", ".join(str(n) for n in id_params)
-            + "} 是资源 id）。请让用例函数签名包含 auth_headers 与 created_todo_id 两个参数"
-            "（pytest fixture：auth_headers 是登录后的请求头；created_todo_id 已为当前用户创建好一条待办、"
-            "返回其 id）。请求传 headers=auth_headers，并把资源 id 位置用 created_todo_id 传入，"
-            "不要用写死的 id。"
-        )
+    if id_params and adapter.resource is not None:
+        return adapter.resource_id_instruction(id_params)
 
-    # 3) 普通需认证
-    return (
-        "鉴权要求：该接口需要登录认证。请让用例函数签名包含 auth_headers 参数"
-        "（pytest fixture，已是登录后的请求头 dict），并在每个请求传 headers=auth_headers。"
-        "不要自己实现注册或登录。"
-    )
-
+    # 3) 普通需认证（含「有 id 形参但适配器无资源语义」的项目）
+    return adapter.auth_instruction()
 
 
 def build_messages(
     operation: Operation,
     spec_summary: dict[str, Any],
     base_url_hint: str = "",
+    adapter: TargetAdapter | None = None,
 ) -> list[dict[str, Any]]:
     """构造发给 LLM 的 messages：系统提示（输出 JSON Schema 约束）+ 用户提示（接口信息）。
 
     提示词模板见 docs/v1-technical-design.md §5；要求严格输出结构化 JSON。
+    adapter 缺省取当前 AITAE_TARGET（与 runner conftest 同一选择源）。
     """
+    adapter = adapter or get_adapter()
     title = spec_summary.get("title", "被测服务")
     version = spec_summary.get("version", "")
     op_text = json.dumps(_op_for_prompt(operation), ensure_ascii=False, indent=1)
@@ -145,7 +141,7 @@ def build_messages(
     user_lines = [f"被测服务：{title}（version={version}）"]
     if base_url_hint:
         user_lines.append(f"服务地址提示：{base_url_hint}（仅参考，测试里统一用 base_url fixture）")
-    instruction = _interface_instruction(operation)
+    instruction = _interface_instruction(operation, adapter)
     if instruction:
         user_lines.append(instruction)
     user_lines.append("请为以下接口生成用例：")
@@ -177,12 +173,14 @@ def _generate_one(
     out_dir: Path,
     client: LLMClient,
     spec_summary: dict[str, Any],
+    *,
+    adapter: TargetAdapter | None = None,
 ) -> tuple[int, int, str | None]:
     """单个 operation：返回 (成功落盘数, 重试次数, 失败原因或 None)。
 
     失败原因非 None 时前两个字段无意义（由调用方记入 report.failed）。
     """
-    messages = build_messages(operation, spec_summary)
+    messages = build_messages(operation, spec_summary, adapter=adapter)
     last_feedback = ""
     for attempt in range(_GENERATION_RETRY_LIMIT + 1):
         try:
@@ -227,6 +225,7 @@ def generate_for_operations(
     out_dir: Path,
     spec_summary: dict[str, Any] | None = None,
     client: LLMClient | None = None,
+    adapter: TargetAdapter | None = None,
 ) -> GenerationReport:
     """逐个生成 -> 校验 ->（带错误信息限次重试）-> 落盘。
 
@@ -240,7 +239,9 @@ def generate_for_operations(
 
     report = GenerationReport(requested=len(operations))
     for operation in operations:
-        succeeded_count, retries, error = _generate_one(operation, out_dir, client, spec_summary)
+        succeeded_count, retries, error = _generate_one(
+            operation, out_dir, client, spec_summary, adapter=adapter
+        )
         if error is not None:
             report.failed.append(f"{operation.operation_id}: {error}")
         else:

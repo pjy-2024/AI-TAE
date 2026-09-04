@@ -44,3 +44,17 @@ def test_build_report_empty_state(tmp_path):
     html = out.read_text(encoding="utf-8")
     assert "尚无执行记录" in html
     assert "尚无自愈记录" in html
+
+
+def test_report_subtitle_uses_adapter_display_name(tmp_path, monkeypatch):
+    from aiae.targets import TargetAdapter
+
+    class _Fake(TargetAdapter):
+        name = "fake_x"
+        display_name = "fake 项目X"
+
+    monkeypatch.setattr("aiae.report.get_adapter", lambda: _Fake())
+    out = build_report(runs_xml=tmp_path / "none.xml", v2_summary=tmp_path / "none.json",
+                       out=tmp_path / "r.html")
+    html = out.read_text(encoding="utf-8")
+    assert "fake 项目X" in html

@@ -9,7 +9,8 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from aiae.runner import RunSummary, _ensure_conftest, _parse_junit, run_pytest
+from aiae.runner import RunSummary, _conftest_source, _ensure_conftest, _parse_junit, run_pytest
+from aiae.targets import TargetAdapter
 
 
 def _write_xml(tmp_path, text):
@@ -143,3 +144,43 @@ def test_run_pytest_junit_xml_artifact(tmp_path):
 def test_run_pytest_missing_dir_raises():
     with pytest.raises(FileNotFoundError):
         run_pytest("不存在的目录xyz")
+
+
+# ---------------------------------------------------------------- conftest 按 auth_mode 渲染
+
+class _NoneAdapter(TargetAdapter):
+    """无认证被测的最小适配器（测试用；不入全局注册表）。"""
+
+    name = "none_test"
+    auth_mode = "none"
+    resource = None
+
+
+def test_conftest_none_mode_only_base_url():
+    """auth_mode=none：conftest 只给 base_url，不注册登录/鉴权/资源 fixtures（退化）。"""
+    src = _conftest_source(_NoneAdapter())
+    assert "def base_url()" in src
+    assert "ADAPTER = get_adapter()" in src
+    assert "registered_user" not in src
+    assert "fresh_user" not in src
+    assert "auth_headers" not in src
+    assert "_RESOURCE" not in src
+    assert "import uuid" not in src
+
+
+def test_ensure_conftest_none_mode_writes_degraded_template(tmp_path):
+    _ensure_conftest(tmp_path, adapter=_NoneAdapter())
+    text = (tmp_path / "conftest.py").read_text(encoding="utf-8")
+    assert "def base_url()" in text
+    assert "registered_user" not in text
+    assert "auth_headers" not in text
+
+
+def test_ensure_conftest_password_mode_still_full(tmp_path):
+    """password 形态（缺省 todo）仍注册全套 fixtures（回归保护）。"""
+    _ensure_conftest(tmp_path)
+    text = (tmp_path / "conftest.py").read_text(encoding="utf-8")
+    assert "def base_url()" in text
+    assert "def registered_user(" in text
+    assert "def fresh_user(" in text
+    assert "def auth_headers(" in text

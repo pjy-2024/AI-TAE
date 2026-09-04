@@ -208,3 +208,17 @@ def test_heal_auto_success(tmp_path, monkeypatch, capsys):
     assert "input[name=user_name]" in out
     assert "命中率" in out
 
+
+def test_generate_default_openapi_follows_adapter(monkeypatch, capsys):
+    """cli generate 缺省 OpenAPI 从当前适配器契约读（不再写死 todo_app）。"""
+    from aiae.targets import TargetAdapter
+
+    class _Fake(TargetAdapter):
+        name = "fake_x"
+        openapi_relpath = "samples/openapi/fake_x-openapi.json"
+
+    monkeypatch.setattr("aiae.cli.get_adapter", lambda: _Fake())
+    rc = main(["generate"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "fake_x-openapi.json" in out  # 缺省路径指向 fake 适配器的 OpenAPI

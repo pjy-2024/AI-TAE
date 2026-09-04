@@ -22,9 +22,13 @@ from aiae.parser.openapi import iter_operations, load_spec
 from aiae.rag import RAGStore
 from aiae.report import build_report
 from aiae.runner import run_pytest
+from aiae.targets import get_adapter
 
-# 相对项目根的被测 OpenAPI 缺省路径（todo_app 为当前固定被测项目）
-_DEFAULT_OPENAPI = Path("samples/openapi/todo_app-openapi.json")
+def _default_openapi() -> str:
+    """cli generate 的缺省 OpenAPI：从当前被测适配器契约读（不再写死 todo_app）。"""
+    adapter = get_adapter()
+    return adapter.openapi_relpath or "samples/openapi/todo_app-openapi.json"
+
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("selfcheck", help="环境自检")
     gen = sub.add_parser("generate", help="OpenAPI -> 生成 pytest 用例草稿（需配 AITAE_LLM_API_KEY）")
-    gen.add_argument("--openapi", type=str, default=str(_DEFAULT_OPENAPI),
+    gen.add_argument("--openapi", type=str, default=_default_openapi(),
                      help="OpenAPI 文件路径（相对项目根或绝对路径）")
     gen.add_argument("--out-dir", type=str, default=None,
                      help="用例草稿输出目录（缺省 data/generated_tests，gitignore 不入库）")

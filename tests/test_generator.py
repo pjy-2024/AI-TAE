@@ -14,6 +14,7 @@ from aiae.generator import (
 )
 from aiae.llm.client import LLMNonRetryableError, LLMResponse
 from aiae.parser.openapi import Operation
+from aiae.targets import TargetAdapter
 
 GOOD_CODE = (
     "def test_create_todo(base_url):\n"
@@ -257,3 +258,60 @@ def test_generate_empty_operations(tmp_path):
     assert report.succeeded == 0
     assert report.failed == []
     assert report.retry_counts == []
+
+
+# ---------------------------------------------------------------- auth_mode="none" 退化
+
+class _NoneAdapter(TargetAdapter):
+    """无认证被测的最小适配器（generator 测试用；不入全局注册表）。"""
+
+    name = "none_test"
+    auth_mode = "none"
+    resource = None
+
+
+def test_build_messages_none_mode_secured_op_no_auth_instruction():
+    # 无认证被测：即使接口带 security 声明也不提示鉴权（框架退化，不引不存在的 fixture）
+    secured = _op(security=[{"OAuth2PasswordBearer": []}])
+    messages = build_messages(secured, {}, adapter=_NoneAdapter())
+    user = messages[1]["content"]
+    assert "auth_headers" not in user
+    assert "fresh_user" not in user
+    assert "不要自己实现注册或登录" not in user
+
+
+def test_build_messages_none_mode_login_shape_no_fresh_user():
+    # 无认证被测：form 请求体（登录类特征）也不提示 fresh_user
+    login = Operation(
+        method="POST",
+        path="/token",
+        operation_id="token",
+        request_body={
+            "required": True,
+            "content": {
+                "application/x-www-form-urlencoded": {"schema": {"type": "object"}}
+            },
+        },
+        responses={},
+    )
+    messages = build_messages(login, {}, adapter=_NoneAdapter())
+    user = messages[1]["content"]
+    assert "fresh_user" not in user
+    assert "auth_headers" not in user
+
+
+def test_build_messages_none_mode_resource_id_op_no_resource_fixture():
+    # 无认证被测：资源 id 形参接口也不提示 created_xxx（conftest 不会注册该 fixture）
+    op = Operation(
+        method="GET",
+        path="/todos/{todo_id}",
+        operation_id="get_todo",
+        parameters=[
+            {"name": "todo_id", "in": "path", "required": True, "schema": {"type": "integer"}}
+        ],
+        responses={},
+    )
+    messages = build_messages(op, {}, adapter=_NoneAdapter())
+    user = messages[1]["content"]
+    assert "created_todo_id" not in user
+    assert "resource" not in user.lower() or "created" not in user

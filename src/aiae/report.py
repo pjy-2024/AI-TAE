@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from aiae.config import PathsConfig
+from aiae.targets import get_adapter
 
 
 def _b64img(p: Path) -> str:
@@ -65,6 +66,8 @@ def build_report(
     out: Path | None = None,
 ) -> Path:
     """生成 HTML 报告，返回输出路径。缺省读 data/ 下最新产物。"""
+    adapter = get_adapter()
+    target_display = adapter.display_name or adapter.name
     data_dir = Path(PathsConfig().data_dir)
     latest_xml = Path(runs_xml) if runs_xml else data_dir / "runs" / "latest.xml"
     summary = Path(v2_summary) if v2_summary else data_dir / "v2_experiments" / "batch-heal-summary.json"
@@ -131,7 +134,7 @@ img {{ max-width:100%; border-radius:8px; margin-top:10px; }}
 .p-error {{ background:#fef3e2; color:#b9770e; }} .p-skipped {{ background:#eee; color:#666; }}
 </style></head><body><div class="wrap">
 <h1>AI-TAE 运行报告 <span class="badge">自动生成</span></h1>
-<div class="sub">AI 智能测试辅助引擎 · 数据自动读取 data/ 最新产物 · 生成时间见文件修改时间 · 被测项目 todo_app</div>
+<div class="sub">AI 智能测试辅助引擎 · 数据自动读取 data/ 最新产物 · 生成时间见文件修改时间 · 被测项目 {target_display}</div>
 <div class="cards">
   <div class="card"><div class="num">{v1_count_disp}</div><div class="lbl">V1 接口数</div><div class="note">最近一次 run</div></div>
   <div class="card"><div class="num">{v1_pass_disp}</div><div class="lbl">V1 通过</div><div class="note">passed/total</div></div>
