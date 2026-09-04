@@ -4,6 +4,7 @@
 > 之前版本的进度快照见 docs/progress-2026-09-03.md
 > 给 AI 助手的协作指引见 [AGENTS.md](AGENTS.md) ｜ 阶段进度见 [docs/progress-2026-09-03.md](docs/progress-2026-09-03.md)
 > 项目说明书与上下文交接：`AI-TAE-项目说明书与上下文交接.md` ｜ V1 技术方案：[docs/v1-technical-design.md](docs/v1-technical-design.md)
+> 给非技术朋友/HR 的介绍（通俗版）：[docs/AI-TAE-非技术介绍.md](docs/AI-TAE-非技术介绍.md)
 
 把 LLM 嵌入真实测试工作流的引擎，分三步落地：
 
