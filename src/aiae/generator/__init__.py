@@ -60,6 +60,7 @@ _SYSTEM_PROMPT = f"""你是一名资深接口测试工程师。根据给定的 O
      例如 username=f"u{{uuid.uuid4().hex[:8]}}"、title=f"t-{{uuid.uuid4().hex[:6]}}"，
      保证用例重复执行不冲突（文件头已 import uuid）
 4. name 必须与 code 里的函数名完全一致。
+5. 状态码纪律：断言的状态码一律以接口信息里 responses 声明的为准；若用例内部先调用其它接口准备数据，其状态码同样以对应接口 responses 为准。不要凭 REST 惯例假设（例如创建成功就默认断言 201）。
 """
 
 

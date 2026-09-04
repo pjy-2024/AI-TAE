@@ -315,3 +315,12 @@ def test_build_messages_none_mode_resource_id_op_no_resource_fixture():
     user = messages[1]["content"]
     assert "created_todo_id" not in user
     assert "resource" not in user.lower() or "created" not in user
+
+
+def test_system_prompt_has_status_code_discipline():
+    """Prompt 必须包含状态码纪律：按 responses 声明断言，不凭 REST 惯例假设（如默认 201）。"""
+    messages = build_messages(_op(), {})
+    system = messages[0]["content"]
+    assert "状态码纪律" in system
+    assert "responses 声明" in system
+    assert "不要凭 REST 惯例假设" in system
