@@ -4,7 +4,7 @@
 > 之前版本的进度快照见 docs/progress-2026-09-03.md
 > 给 AI 助手的协作指引见 [AGENTS.md](AGENTS.md) ｜ 阶段进度见 [docs/progress-2026-09-03.md](docs/progress-2026-09-03.md)
 > 项目说明书与上下文交接：`AI-TAE-项目说明书与上下文交接.md` ｜ V1 技术方案：[docs/v1-technical-design.md](docs/v1-technical-design.md)
-> 给非技术朋友/HR 的介绍（通俗版）：[docs/AI-TAE-非技术介绍.md](docs/AI-TAE-非技术介绍.md)
+> 给非技术朋友/HR 的介绍（通俗版）：[docs/AI-TAE-非技术介绍.md](docs/AI-TAE-非技术介绍.md) ｜ V3 规划：[docs/v3-technical-design.md](docs/v3-technical-design.md)
 
 把 LLM 嵌入真实测试工作流的引擎，分三步落地：
 
@@ -49,6 +49,27 @@ flowchart LR
 - 可执行率 = 19/19 = 100%（codec/ast 门禁：LLM 输出都能被 pytest 收集执行）
 - 通过率 = 19/19 = 100%（分母 = 可执行；三次迭代失败分类均为「用例准备不足」，无一为被测项目真 Bug）
 - 完整口径与迭代记录见 docs/progress-2026-09-03.md §六；junit 报告在 data/runs（gitignore，不入库）
+
+### V2 实测指标（2026-09-04，真实）
+
+V2（UI 失败自愈）已在 todo_app 上真实跑通最小闭环并扩到 4 场景（不同页面/改法）：
+登录页改 name、注册页改 name、注册页改 form id、登录页改按钮文本。
+
+![V2 UI 失败自愈流程（通俗版）](docs/images/v2-heal-flow.png)
+
+![V2 经验写回后 LLM 调用下降](docs/images/v2-llm-calls.png)
+
+| 场景 | 改法 | 首次修复（LLM） | 稳定后重跑 |
+|---|---|---|---|
+| S1 login 改 name | `username→user_name` | `input[name='user_name']` | KV 命中 |
+| S2 register 改 name | `email→mail` | `input[name='mail']` | KV 命中 |
+| S3 register 改 id | `registerForm→signupForm` | `form#signupForm` | KV 命中 |
+| S4 login 改文本 | `Login→Sign In` | `button[type='submit']` | KV 命中 |
+
+- 自愈成功率 = 8/8（首次 LLM + 稳定后 KV 重跑全部成功，新定位器均经 Edge 真实页面验证）
+- KV 命中率（页面结构稳定时）= 4/4 = 100%，零 LLM 调用（经验写回的价值）
+- 真实工程发现：同页连续改版会使「整页结构指纹」变化导致 KV 签名失效 → **RAG 模糊检索兜底**仍成功（KV 精确敏感 / RAG 模糊鲁棒的互补实证）
+- 完整口径与记录见 docs/progress-2026-09-03.md；数据产物在 data/v2_experiments（gitignore，不入库）
 
 ## 环境（Windows 已迁移到 C 盘独立环境）
 
