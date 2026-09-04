@@ -39,6 +39,10 @@ class LocalHashEmbedding(EmbeddingFunction):
         """chromadb 新版要求 embedding function 有名字（非 default）。"""
         return "local_hash_v1"
 
+    def get_config(self) -> dict:
+        """chromadb 新版要求 embedding function 提供可序列化配置（本实现无参数）。"""
+        return {"name": self.name(), "dim": _EMBED_DIM}
+
     def __call__(self, input: list[str]) -> list[list[float]]:
         return [_embed_one(text) for text in input]
 
