@@ -30,24 +30,23 @@ from aiae.config import PathsConfig
 
 # runner 自动写入的 conftest（只写一次，人工改过不覆盖）。
 # 注意：conftest 是「运行约定」，模板升级后旧自动生成的 conftest 需删除才会按新模板重建。
+# conftest 模板：通用骨架，运行时 import 被测项目适配器（aiae.targets）。
+# 框架代码不再含被测项目硬编码 —— 换被测项目换 AITAE_TARGET 指向的适配器即可。
 _CONFTEST_TEMPLATE = '''"""AI-TAE 运行约定（runner 自动生成，可人工修改）。
 
-fixtures（按被测项目角色/资源语义设计；换被测项目需人工调整本文件）：
-- base_url        : 被测服务地址（AITAE_TARGET_BASE_URL）
-- registered_user : session 级用户（注册 role="admin"：被测项目 admin 接口要求 role=admin，
-                     而普通接口只校验登录不校验角色，故 admin 可通吃；若被测项目角色语义更严，
-                     应拆普通/管理员两类 fixture 并让 Prompt 区分）
-- fresh_user      : function 级随机普通用户（登录类用例用；每次新建，避免被「改密码」等
-                     改状态用例污染共享的 registered_user）
-- auth_headers    : registered_user 的 Authorization 头（需认证接口用）
-- created_todo_id : function 级已创建的待办 id（path 含 {todo_id} 的接口用；每次新建，
-                     避免 read/update/delete 共用一条造成的执行顺序耦合）
+fixtures 由被测项目适配器驱动（src/aiae/targets/，AITAE_TARGET 选择）：
+- 框架不含被测项目硬编码；换被测项目 = 换适配器，本文件无需改。
+- base_url   : 被测服务地址（AITAE_TARGET_BASE_URL，缺省取适配器默认端口）
+- registered_user : session 级用户（角色取适配器 auth_role）
+- fresh_user : function 级随机普通用户（登录类用例用，自包含防共享污染）
+- auth_headers : registered_user 登录后的 Authorization 头（需认证接口用）
+- <资源 fixture> : 按适配器 resource 能力动态注册（如 {todo_id} 接口用）
 
 生成用例签名约定（与 generator 的 Prompt 配套）：
-- 开放接口     : def test_xxx(base_url)
-- 需认证接口   : def test_xxx(base_url, auth_headers)
-- 登录类接口   : def test_xxx(base_url, fresh_user)
-- 资源 id 接口 : def test_xxx(base_url, auth_headers, created_todo_id)  # {todo_id} 用它
+- 开放接口   : def test_xxx(base_url)
+- 需认证接口 : def test_xxx(base_url, auth_headers)
+- 登录类接口 : def test_xxx(base_url, fresh_user)
+- 资源 id 接口 : def test_xxx(base_url, auth_headers, <资源 fixture>)
 """
 import os
 import uuid
@@ -55,160 +54,45 @@ import uuid
 import pytest
 import requests
 
+from aiae.targets import get_adapter
 
-def _register_user(base_url: str, *, role: str) -> dict:
-    """注册一个随机用户（用户名/密码带 uuid 后缀，重复运行不冲突），返回登录凭据。"""
-    username = "aiae_" + uuid.uuid4().hex[:12]
-    password = "Aiae_pass_" + uuid.uuid4().hex[:8]
-    payload = {
-        "username": username,
-        "email": f"{username}@test.local",
-        "first_name": "AI",
-        "last_name": "TAE",
-        "password": password,
-        "role": role,
-        "phone_number": "13800000000",
-    }
-    resp = requests.post(f"{base_url}/auth", json=payload, timeout=10)
-    resp.raise_for_status()  # 注册失败直接暴露（预期 201）
-    return {"username": username, "password": password, "email": payload["email"]}
+ADAPTER = get_adapter()  # AITAE_TARGET，缺省 todo_app
 
 
 @pytest.fixture(scope="session")
 def base_url() -> str:
-    return os.getenv("AITAE_TARGET_BASE_URL", "http://127.0.0.1:8000")
+    return os.getenv("AITAE_TARGET_BASE_URL") or ADAPTER.default_base_url
 
 
 @pytest.fixture(scope="session")
 def registered_user(base_url) -> dict:
-    """session 级用户：注册 role=admin，供 auth_headers 使用（整批只注册一次）。"""
-    return _register_user(base_url, role="admin")
+    """session 级用户：角色取适配器 auth_role（todo_app 为 admin，可通吃普通+admin 接口）。"""
+    return ADAPTER.register_user(base_url, role=ADAPTER.auth_role)
 
 
 @pytest.fixture
 def fresh_user(base_url) -> dict:
-    """function 级随机普通用户：登录类用例用（每次新建，自包含、不受其他用例改状态影响）。"""
-    return _register_user(base_url, role="user")
+    """function 级随机普通用户：登录类用例用（每次新建，不受其他用例改状态影响）。"""
+    return ADAPTER.register_user(base_url, role="user")
 
 
 @pytest.fixture(scope="session")
 def auth_headers(base_url, registered_user) -> dict:
     """用 registered_user 登录，返回带 Bearer token 的请求头。"""
-    resp = requests.post(
-        f"{base_url}/auth/token",
-        data={
-            "username": registered_user["username"],
-            "password": registered_user["password"],
-        },
-        timeout=10,
-    )
-    resp.raise_for_status()
-    token = resp.json()["access_token"]
+    token = ADAPTER.login_token(base_url, registered_user["username"], registered_user["password"])
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture
-def created_todo_id(base_url, auth_headers) -> int:
-    """function 级：为当前用户创建一条待办，返回其 id（资源 id 类接口用例用）。
+# 资源级 fixture：仅当被测适配器声明了 resource 能力时注册（fixture 名取适配器声明）
+if ADAPTER.resource is not None:
+    _RESOURCE = ADAPTER.resource
 
-    注意：todo_app 的创建接口返回 201 + null（无响应体），拿不到对象，
-    所以创建后从「当前用户待办列表」按 seed 标题前缀取回刚创建那条的 id。
-    """
-    seed_title = f"seed-{uuid.uuid4().hex[:6]}"
-    resp = requests.post(
-        f"{base_url}/todos/todo",
-        json={
-            "title": seed_title,
-            "description": f"seed-desc-{uuid.uuid4().hex[:8]}",
-            "priority": 1,
-        },
-        headers=auth_headers,
-        timeout=10,
-    )
-    resp.raise_for_status()
-    listing = requests.get(f"{base_url}/todos/", headers=auth_headers, timeout=10)
-    listing.raise_for_status()
-    todos = listing.json() or []
-    matches = [t for t in todos if t.get("title") == seed_title]
-    if not matches:
-        raise AssertionError(f"创建后未在列表中找到 seed 待办: {seed_title}")
-    return matches[0]["id"]
+    @pytest.fixture
+    def _resource_id(base_url, auth_headers) -> int:
+        return _RESOURCE.create_id(base_url, auth_headers, seed=f"seed-{uuid.uuid4().hex[:6]}")
+
+    globals()[_RESOURCE.fixture_name] = _resource_id
 '''
-import os
-import uuid
-
-import pytest
-import requests
-
-
-def _register_user(base_url: str, *, role: str) -> dict:
-    """注册一个随机用户（用户名/密码带 uuid 后缀，重复运行不冲突），返回登录凭据。"""
-    username = "aiae_" + uuid.uuid4().hex[:12]
-    password = "Aiae_pass_" + uuid.uuid4().hex[:8]
-    payload = {
-        "username": username,
-        "email": f"{username}@test.local",
-        "first_name": "AI",
-        "last_name": "TAE",
-        "password": password,
-        "role": role,
-        "phone_number": "13800000000",
-    }
-    resp = requests.post(f"{base_url}/auth", json=payload, timeout=10)
-    resp.raise_for_status()  # 注册失败直接暴露（预期 201）
-    return {"username": username, "password": password, "email": payload["email"]}
-
-
-@pytest.fixture(scope="session")
-def base_url() -> str:
-    return os.getenv("AITAE_TARGET_BASE_URL", "http://127.0.0.1:8000")
-
-
-@pytest.fixture(scope="session")
-def registered_user(base_url) -> dict:
-    """session 级用户：注册 role=admin，供 auth_headers 使用（整批只注册一次）。"""
-    return _register_user(base_url, role="admin")
-
-
-@pytest.fixture
-def fresh_user(base_url) -> dict:
-    """function 级随机普通用户：登录类用例用（每次新建，自包含、不受其他用例改状态影响）。"""
-    return _register_user(base_url, role="user")
-
-
-@pytest.fixture(scope="session")
-def auth_headers(base_url, registered_user) -> dict:
-    """用 registered_user 登录，返回带 Bearer token 的请求头。"""
-    resp = requests.post(
-        f"{base_url}/auth/token",
-        data={
-            "username": registered_user["username"],
-            "password": registered_user["password"],
-        },
-        timeout=10,
-    )
-    resp.raise_for_status()
-    token = resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture
-def created_todo_id(base_url, auth_headers) -> int:
-    """function 级：为当前用户创建一条待办，返回其 id（资源 id 类接口用例用）。"""
-    resp = requests.post(
-        f"{base_url}/todos/todo",
-        json={
-            "title": f"seed-{uuid.uuid4().hex[:6]}",
-            "description": f"seed-desc-{uuid.uuid4().hex[:8]}",
-            "priority": 1,
-        },
-        headers=auth_headers,
-        timeout=10,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return data["id"] if isinstance(data, dict) else int(resp.text)
-
 
 
 @dataclass
@@ -232,10 +116,21 @@ def _ensure_conftest(generated_dir: Path) -> Path:
 
 
 def _invoke_pytest(args: list[str], cwd: str) -> subprocess.CompletedProcess:
-    """子进程执行 pytest（可被测试 monkeypatch 替换）。"""
+    """子进程执行 pytest（可被测试 monkeypatch 替换）。
+
+    显式注入 PYTHONPATH=项目 src：conftest 需 import aiae.targets（适配器），
+    而 pytest --rootdir 指向生成目录时不会加载项目 pyproject 的 pythonpath 配置。
+    """
+    import os
+
+    from pathlib import Path as _Path
+    src_dir = str(_Path(PathsConfig().project_root) / "src")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = src_dir + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     return subprocess.run(
         [sys.executable, "-m", "pytest", *args],
         cwd=cwd,
+        env=env,
         capture_output=True,
         text=True,
         encoding="utf-8",

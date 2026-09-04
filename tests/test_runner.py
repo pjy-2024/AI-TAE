@@ -65,6 +65,9 @@ def test_ensure_conftest_writes_once_and_preserves_edits(tmp_path):
     assert "def base_url()" in first          # 模板含 base_url fixture
     assert "def registered_user(" in first     # 模板含随机用户 fixture
     assert "def auth_headers(" in first        # 模板含鉴权头 fixture
+    assert "from aiae.targets import get_adapter" in first  # 适配器驱动（框架无项目硬编码）
+    assert "Aiae_pass_" not in first           # todo 特定数据已移出模板
+    assert "todos/todo" not in first
 
     # 人工改过后再次 run 不应覆盖
     (tmp_path / "conftest.py").write_text("# 人工修改", encoding="utf-8")
