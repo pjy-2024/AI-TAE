@@ -58,8 +58,12 @@ class UISession:
 
     def open(self, path: str, *, timeout_ms: int = 20000) -> Page:
         """打开 base_url + path，等待网络空闲后返回 page。"""
+        return self.open_url(f"{self.base_url}/{path.lstrip('/')}", timeout_ms=timeout_ms)
+
+    def open_url(self, url: str, *, timeout_ms: int = 20000) -> Page:
+        """直接打开完整 URL（不依赖 base_url，供 heal 从失败样本的 page_url 恢复现场）。"""
         page = self._browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{self.base_url}/{path.lstrip('/')}", wait_until="networkidle", timeout=timeout_ms)
+        page.goto(url, wait_until="networkidle", timeout=timeout_ms)
         self._page = page
         return page
 

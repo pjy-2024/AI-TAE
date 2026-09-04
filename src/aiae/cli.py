@@ -1,4 +1,4 @@
-"""命令行入口：aiae generate / run / selfcheck（V2 heal、V3 judge 占位）。
+"""命令行入口：aiae generate / run / heal / selfcheck（V3 judge 占位）。
 
 职责边界：cli 是薄壳 —— 只做「解析参数 -> 调底层函数 -> 打印结果」，
 业务逻辑一律在 parser / generator / runner / metrics 里（已各自单测）。
@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -14,7 +15,11 @@ from aiae.config import LLMConfig, PathsConfig
 from aiae.generator import generate_for_operations
 from aiae.llm.client import LLMClient
 from aiae.metrics import Metrics
+from aiae.healer import Healer
+from aiae.healer.ui import UISession
+from aiae.kv import KVStore
 from aiae.parser.openapi import iter_operations, load_spec
+from aiae.rag import RAGStore
 from aiae.runner import run_pytest
 
 # 相对项目根的被测 OpenAPI 缺省路径（todo_app 为当前固定被测项目）
@@ -36,7 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
                      help="用例目录（缺省 data/generated_tests）")
     run.add_argument("--junit-xml", type=str, default=None,
                      help="junitxml 落盘路径（缺省 data/runs/latest.xml）")
-    sub.add_parser("heal", help="[V2] UI 失败自愈（占位）")
+    heal = sub.add_parser("heal", help="[V2] UI 失败自愈：失败样本 -> KV/RAG/LLM -> 人工确认 -> 应用写回")
+    heal.add_argument("--sample", type=str, default="data/v2_experiments/failure-sample.json",
+                      help="失败样本 JSON（相对项目根或绝对路径）")
+    heal.add_argument("--auto", action="store_true",
+                      help="自动确认（演示/链路验证用；缺省交互式 y/N 人工确认）")
     sub.add_parser("judge", help="[V3] 真Bug/Flaky 判定（占位）")
     return p
 
@@ -128,6 +137,55 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_heal(args: argparse.Namespace) -> int:
+    """UI 失败自愈：读失败样本 -> 恢复页面现场 -> Healer 编排 -> 打印报告。"""
+    sample_path = _resolve_project_path(args.sample)
+    if not sample_path.exists():
+        print(f"[heal] 失败样本不存在: {sample_path}（先用 UI 测试复现失败并落盘样本）")
+        return 1
+    try:
+        failure = json.loads(sample_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"[heal] 失败样本不是合法 JSON: {sample_path}（{exc}）")
+        return 1
+    # 兼容两种样本格式：扁平（Healer.heal 输入）或 {scenario, error_info:{...}} 嵌套
+    if isinstance(failure.get("error_info"), dict):
+        nested = failure["error_info"]
+        failure = {**nested, "scenario": failure.get("scenario", "")}
+    if failure.get("error_type") != "locator_not_found":
+        # 安全护栏：只对「元素定位失败」自愈，防止把真 Bug 当改版修
+        print(f"[heal] 错误类型 {failure.get('error_type')!r} 不是 locator_not_found，拒绝自愈（护栏：只自愈定位失败）")
+        return 1
+    page_url = failure.get("page_url", "")
+    if not page_url:
+        print("[heal] 失败样本缺 page_url，无法恢复页面现场")
+        return 1
+
+    config = LLMConfig.from_env()
+    if not config.is_configured():
+        print("[heal] 未配置 AITAE_LLM_API_KEY：自愈需调 LLM 兜底，请先配置 .env")
+        return 1
+
+    kv, rag = KVStore(), RAGStore()
+    confirm = (lambda proposal: True) if args.auto else None  # None -> Healer 默认交互 y/N
+    healer = Healer(kv=kv, rag=rag, llm=LLMClient(config), confirm=confirm)
+    with UISession("") as ui:
+        print(f"[heal] 打开页面现场: {page_url}")
+        ui.open_url(page_url)
+        result = healer.heal(ui, failure)
+
+    print(f"  结果      : {result.outcome}")
+    print(f"  新定位器  : {result.new_locator or '-'}")
+    print(f"  来源      : {result.source or '-'}")
+    print(f"  LLM 尝试  : {result.attempts}")
+    print(f"  说明      : {result.message}")
+    stats = kv.stats()
+    total = stats["hits"] + stats["misses"]
+    if total:
+        print(f"  KV 统计   : hits={stats['hits']} misses={stats['misses']} 命中率={stats['hits'] / total:.0%}")
+    return 0 if result.outcome in ("kv_hit", "healed") else 1
+
+
 def _print_config_summary() -> None:
     llm = LLMConfig.from_env()
     paths = PathsConfig()
@@ -150,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_generate(args)
     if args.command == "run":
         return _cmd_run(args)
+    if args.command == "heal":
+        return _cmd_heal(args)
     print(f"[{args.command}] 尚未实现：将在对应阶段落地，见 docs/v1-technical-design.md。")
     return 1
 
