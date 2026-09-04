@@ -54,7 +54,8 @@ def _conftest_source(adapter: TargetAdapter) -> str:
     """按适配器契约渲染 conftest 源码（auth_mode 决定注册哪些 fixtures）。
 
     - password：base_url + registered_user / fresh_user / auth_headers（+ 资源 fixture）；
-    - none    ：只 base_url（被测无认证，生成用例全部按开放接口，签名只有 base_url）。
+    - none    ：base_url（+ 适配器声明 resource 时的无认证资源 fixture）——
+      资源能力与认证形态解耦：无认证项目同样可用框架创建的资源 id。
     """
     auth_mode = adapter.auth_mode
     doc_lines = [
@@ -66,12 +67,23 @@ def _conftest_source(adapter: TargetAdapter) -> str:
     ]
     if auth_mode == "none":
         doc_lines += [
-            "- 被测无认证（auth_mode=none）：不注册登录/鉴权 fixtures；",
-            "  生成用例全部按开放接口（签名只有 base_url）。",
+            "- 被测无认证（auth_mode=none）：不注册登录/鉴权 fixtures。",
         ]
+        if adapter.resource is not None:
+            doc_lines += [
+                f"- {adapter.resource.fixture_name} : 无认证资源 fixture（框架直接创建，不需登录头；资源 id 类接口用）",
+                "",
+                "生成用例签名约定（与 generator 的 Prompt 配套，文案由适配器指令钩子描述）：",
+                "- 开放接口   : def test_xxx(base_url)",
+                f"- 资源 id 接口 : def test_xxx(base_url, {adapter.resource.fixture_name})",
+            ]
+        else:
+            doc_lines += ["  生成用例全部按开放接口（签名只有 base_url）。"]
         doc_lines.append('"""')
-        body_lines = [
-            "import os",
+        body_lines = ["import os"]
+        if adapter.resource is not None:
+            body_lines.append("import uuid")
+        body_lines += [
             "",
             "import pytest",
             "",
@@ -83,8 +95,18 @@ def _conftest_source(adapter: TargetAdapter) -> str:
             '@pytest.fixture(scope="session")',
             "def base_url() -> str:",
             '    return os.getenv("AITAE_TARGET_BASE_URL") or ADAPTER.default_base_url',
-            "",
         ]
+        if adapter.resource is not None:
+            body_lines += [
+                "",
+                "",
+                "# 资源级 fixture（无认证形态）：框架直接创建资源，不需登录头",
+                "@pytest.fixture",
+                "def _resource_id(base_url) -> int:",
+                '    return ADAPTER.resource.create_id(base_url, {}, seed=f"seed-{uuid.uuid4().hex[:6]}")',
+                "",
+                "globals()[ADAPTER.resource.fixture_name] = _resource_id",
+            ]
         return "\n".join(doc_lines) + "\n" + "\n".join(body_lines)
 
     # password 形态

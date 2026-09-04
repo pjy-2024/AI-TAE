@@ -100,7 +100,8 @@ def test_fastapi_crud_todo_adapter_contract():
     a = FastAPICrudTodoAdapter()
     assert a.name == "fastapi_crud_todo"
     assert a.auth_mode == "none"          # 无认证：conftest 只给 base_url
-    assert a.resource is None             # 无「当前用户资源」语义
+    assert a.resource is not None         # 方案 B：无认证项目也可声明资源能力（框架创建）
+    assert a.resource.fixture_name == "created_todo_id"
     assert a.default_base_url.endswith(":8011")
     assert a.openapi_relpath.endswith("fastapi_crud_todo-openapi.json")
     assert a.display_name
@@ -108,3 +109,12 @@ def test_fastapi_crud_todo_adapter_contract():
 
 def test_get_adapter_second_project_registered():
     assert get_adapter("fastapi_crud_todo").name == "fastapi_crud_todo"
+
+
+def test_fastapi_crud_todo_resource_instruction_no_auth():
+    """无认证形态的资源 id 指令：用框架 fixture，不提示 auth_headers、不让 LLM 自建。"""
+    a = FastAPICrudTodoAdapter()
+    ri = a.resource_id_instruction(["todo_id"])
+    assert "created_todo_id" in ri
+    assert "auth_headers" not in ri
+    assert "不要自己先调用创建接口" in ri

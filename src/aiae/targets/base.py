@@ -12,8 +12,9 @@ AITAE_TARGET 指向它（conftest 与生成用例的 fixture 契约由适配器�
    - "none"：被测无认证、纯开放 API。conftest 只提供 base_url，不注册任何
      登录/鉴权 fixtures；generator 不给鉴权/登录指令 —— 验证框架可退化；
    - 其它形态（如 "apikey"）：预留，按需扩展（auth_mode + 模板渲染 + 适配器实现）。
-2. 资源语义 resource：被测有没有「当前用户已存在资源 id」（如 todo 的 {todo_id}），
-   有则提供创建/取回 id 的能力（供 {id} 类接口用例与 V2 签名）；无资源语义 = None。
+2. 资源语义 resource：被测有没有「可被框架创建、供 id 类接口使用的资源」（如 todo 的 {todo_id}）。
+   有则提供创建/取回 id 的能力（供 {id} 类接口用例）；与认证形态解耦——password 项目创建登录用户
+   的资源，none 项目直接创建共享资源；无资源语义 = None。
 3. 默认地址 default_base_url（可被 AITAE_TARGET_BASE_URL 覆盖）。
 4. 接口文档 openapi_relpath：cli generate 的缺省 OpenAPI 输入（相对项目根）。
 5. 展示名 display_name：报告 / 日志用（空则退回 name）。
@@ -31,7 +32,14 @@ from typing import Any
 
 
 class ResourceAdapter(ABC):
-    """「当前用户已创建资源」适配：为 {xxx_id} 类接口提供真实资源 id。"""
+    """资源适配：为 {xxx_id} 类接口提供「已创建好的真实资源 id」。
+
+与认证形态解耦（2026-09-04 方案 B）：
+- password 形态：创建属于已登录用户的资源（todo_app，headers=登录头）；
+- none 形态：直接创建共享资源（fastapi_crud_todo，headers={}）。
+框架负责创建并注入 fixture，LLM 用例不自建资源 —— 从根上消灭
+「自建子请求凭惯例断言状态码」这类生成错误。
+"""
 
     fixture_name: str = "created_resource_id"  # conftest 注册的 fixture 名（与生成用例签名一致）
 

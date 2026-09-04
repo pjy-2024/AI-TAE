@@ -88,7 +88,7 @@ def _interface_instruction(operation: Operation, adapter: TargetAdapter) -> str:
     「fixture 怎么用」文案一律从适配器取（TargetAdapter 的 login_instruction /
     auth_instruction / resource_id_instruction 钩子）——被测假设全部收敛在 targets 层。
 
-    优先级（互斥，按特征识别接口类型；auth_mode="none" 时全部按开放接口退化）：
+    优先级（互斥，按特征识别接口类型；auth_mode="none" 时无登录/鉴权概念，但适配器声明资源语义的 id 类接口仍用框架资源 fixture）：
     1. 登录类：password 形态 + 无 security + 表单请求体（OAuth2 password 流特征）
        -> 适配器 login_instruction（todo 用 fresh_user，每次新建防共享污染）；
     2. 资源 id 类：需认证且 path 形参以 id 结尾（如 {todo_id}）且适配器声明了 resource
@@ -96,14 +96,23 @@ def _interface_instruction(operation: Operation, adapter: TargetAdapter) -> str:
     3. 普通需认证 -> 适配器 auth_instruction（auth_headers）；
     4. 其余开放接口无附加指令。
     """
-    if adapter.auth_mode == "none":
-        # 无认证被测：没有登录/鉴权概念，接口全部按开放接口处理（框架可退化）
-        return ""
-
     request_body = operation.request_body or {}
     media_types = (request_body.get("content") or {}).keys()
     form_like = any("x-www-form-urlencoded" in m or "multipart" in m for m in media_types)
+    id_params = [
+        p.get("name")
+        for p in operation.parameters
+        if p.get("in") == "path" and str(p.get("name", "")).lower().endswith("id")
+    ]
 
+    if adapter.auth_mode == "none":
+        # 无认证被测：没有登录/鉴权概念。若适配器声明了资源语义，id 类接口
+        # 用框架创建好的资源 fixture（不让 LLM 自建，避免自建类错误）；否则按开放接口。
+        if id_params and adapter.resource is not None:
+            return adapter.resource_id_instruction(id_params)
+        return ""
+
+    # password 形态：
     # 1) 登录类（无 security + form 请求体）-> 适配器文案（todo: fresh_user）
     if not operation.security and form_like:
         return adapter.login_instruction()
@@ -111,11 +120,6 @@ def _interface_instruction(operation: Operation, adapter: TargetAdapter) -> str:
         return ""
 
     # 2) 资源 id 类：需认证 + path 形参名以 id 结尾 + 适配器有资源语义
-    id_params = [
-        p.get("name")
-        for p in operation.parameters
-        if p.get("in") == "path" and str(p.get("name", "")).lower().endswith("id")
-    ]
     if id_params and adapter.resource is not None:
         return adapter.resource_id_instruction(id_params)
 

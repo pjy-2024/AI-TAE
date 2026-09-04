@@ -324,3 +324,33 @@ def test_system_prompt_has_status_code_discipline():
     assert "状态码纪律" in system
     assert "responses 声明" in system
     assert "不要凭 REST 惯例假设" in system
+
+
+def test_build_messages_none_mode_with_resource_id_op_uses_fixture():
+    """none + resource：id 类接口提示用框架 created_todo_id fixture，不让 LLM 自建。"""
+    from aiae.targets.fastapi_crud_todo import FastAPICrudTodoAdapter
+
+    op = Operation(
+        method="PUT",
+        path="/todos/{todo_id}",
+        operation_id="update_todo",
+        parameters=[
+            {"name": "todo_id", "in": "path", "required": True, "schema": {"type": "integer"}}
+        ],
+        responses={},
+    )
+    messages = build_messages(op, {}, adapter=FastAPICrudTodoAdapter())
+    user = messages[1]["content"]
+    assert "created_todo_id" in user
+    assert "auth_headers" not in user
+    assert "不要自己先调用创建接口" in user
+
+
+def test_build_messages_none_mode_with_resource_open_op_no_instruction():
+    """none + resource：无 id 形参的开放接口仍不给任何指令。"""
+    from aiae.targets.fastapi_crud_todo import FastAPICrudTodoAdapter
+
+    messages = build_messages(_op(), {}, adapter=FastAPICrudTodoAdapter())
+    user = messages[1]["content"]
+    assert "created_todo_id" not in user
+    assert "auth_headers" not in user

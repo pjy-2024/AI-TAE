@@ -51,8 +51,8 @@ V2 需要「故意改动 UI 制造页面漂移」时，在快照副本里改并�
 
 1. **比 todo_app 更简单 + 认证形态不同**：无注册/登录/token 的纯 API CRUD —— 专为验证
    「auth_mode=none 退化」：conftest 只给 base_url、生成用例全部按开放接口（签名只有 base_url）；
-2. 有资源 id 接口（{todo_id}）但无「当前用户资源」语义（resource=None）——验证无认证项目
-   的资源 id 接口由 LLM 用例自建自取，框架不引不存在的 fixture；
+2. 有资源 id 接口（{todo_id}）——2026-09-04 方案 B 后：无认证项目同样声明资源能力，
+   资源由框架 fixture 创建注入（与认证形态解耦），LLM 用例不自建资源（消灭 201/307 类错误）；
 3. 自带 OpenAPI、一条 uvicorn 命令起、SQLite 本地可跑、无 Docker/Postgres 依赖。
 
 ### 依赖漂移处理（2026-09-04 真实踩坑，务必保留此记录）
@@ -77,5 +77,5 @@ Python 3.12 上出现两处不兼容，按「包名装 lock 时代兼容版本�
 
 - 页面/API：GET / → 200；POST /todos/ → 200（创建返回对象含 id）；GET /todos/ → 200 列表；
   GET /todos/{id} → 200/404；PUT /todos/{id} → 200；DELETE /todos/{id} → 200
-- AI-TAE V1：6/6 草稿生成；真实 run：可执行率 100%（6/6）、通过率 66.7%（4/6），
-  失败 2 例均为 LLM「自建资源后凭 REST 惯例断言 201」，被测实际返回 200（见 progress-2026-09-04）
+- AI-TAE V1 三轮（真实，见 progress-2026-09-04）：① 无规则 66.7%（4/6，失败=LLM 自建断言 201）→
+  ② 加「状态码纪律」规则仍 50%（无信息支撑）→ ③ 方案 B（框架 created_todo_id fixture）100%（6/6，零人工修正）

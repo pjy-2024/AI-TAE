@@ -184,3 +184,17 @@ def test_ensure_conftest_password_mode_still_full(tmp_path):
     assert "def registered_user(" in text
     assert "def fresh_user(" in text
     assert "def auth_headers(" in text
+
+
+def test_conftest_none_mode_with_resource_registers_fixture():
+    """none + resource：conftest 注册无认证资源 fixture（不需登录头），不注册登录 fixtures。"""
+    from aiae.targets.fastapi_crud_todo import FastAPICrudTodoAdapter
+
+    src = _conftest_source(FastAPICrudTodoAdapter())
+    assert "def base_url()" in src
+    assert "registered_user" not in src
+    assert "fresh_user" not in src
+    assert "auth_headers" not in src
+    assert "ADAPTER.resource.create_id(base_url, {}," in src   # 无认证：headers 传空 dict
+    assert "globals()[ADAPTER.resource.fixture_name]" in src
+    assert "created_todo_id" in src
