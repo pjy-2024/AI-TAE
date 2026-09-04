@@ -20,6 +20,7 @@ from aiae.healer.ui import UISession
 from aiae.kv import KVStore
 from aiae.parser.openapi import iter_operations, load_spec
 from aiae.rag import RAGStore
+from aiae.report import build_report
 from aiae.runner import run_pytest
 
 # 相对项目根的被测 OpenAPI 缺省路径（todo_app 为当前固定被测项目）
@@ -46,6 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
                       help="失败样本 JSON（相对项目根或绝对路径）")
     heal.add_argument("--auto", action="store_true",
                       help="自动确认（演示/链路验证用；缺省交互式 y/N 人工确认）")
+    rpt = sub.add_parser("report", help="生成 HTML 运行报告（自动读 data/ 最新产物；run/heal 后也会自动刷新）")
+    rpt.add_argument("--out", type=str, default=None,
+                     help="报告输出路径（缺省 data/reports/latest.html）")
     sub.add_parser("judge", help="[V3] 真Bug/Flaky 判定（占位）")
     return p
 
@@ -186,6 +190,22 @@ def _cmd_heal(args: argparse.Namespace) -> int:
     return 0 if result.outcome in ("kv_hit", "healed") else 1
 
 
+def _cmd_report(args: argparse.Namespace) -> int:
+    """生成 HTML 运行报告。"""
+    out_path = build_report(out=_resolve_project_path(args.out) if args.out else None)
+    print(f"[report] 已生成: {out_path}（Edge 打开即可查看；数据变更后重跑本命令或 aiae run/heal 自动刷新）")
+    return 0
+
+
+def _auto_report() -> None:
+    """run/heal 成功后的静默自动刷新（事件驱动：报告永远最新）。"""
+    try:
+        build_report()
+        print("[report] 已自动刷新: data/reports/latest.html")
+    except Exception as exc:  # 报告生成失败不影响主流程结果
+        print(f"[report] 自动刷新失败（不影响结果）: {exc}")
+
+
 def _print_config_summary() -> None:
     llm = LLMConfig.from_env()
     paths = PathsConfig()
@@ -207,9 +227,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "generate":
         return _cmd_generate(args)
     if args.command == "run":
-        return _cmd_run(args)
+        rc = _cmd_run(args)
+        if rc == 0:
+            _auto_report()
+        return rc
     if args.command == "heal":
-        return _cmd_heal(args)
+        rc = _cmd_heal(args)
+        if rc == 0:
+            _auto_report()
+        return rc
+    if args.command == "report":
+        return _cmd_report(args)
     print(f"[{args.command}] 尚未实现：将在对应阶段落地，见 docs/v1-technical-design.md。")
     return 1
 
