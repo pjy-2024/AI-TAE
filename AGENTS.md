@@ -6,12 +6,13 @@
 ## 这是什么项目
 
 AI 智能测试辅助引擎：V1 接口用例自动生成（OpenAPI → pytest）→ V2 UI 失败自愈（KV + RAG + LLM）
-→ V3 judge + golden 评测。当前：骨架 v0.1 + C 盘独立环境 + 被测项目已选定跑通，业务代码未开始。
+→ V3 judge + golden 评测。当前：V1 双被测项目端到端跑通（todo_app 19/19、fastapi_crud_todo 6/6）、V2 自愈关键路径跑通，自身 147 测试全过。
 
 ## 进入项目后请先读这些文件（全部上下文都在仓库里）
 
-- docs/progress-2026-09-04.md —— 阶段进度与交接（最新，优先读；第二被测项目适配验证）
-- docs/progress-2026-09-03.md —— 上一阶段（V1 端到端 + V2 自愈）
+- docs/progress-2026-09-05.md —— 阶段进度与交接（最新，优先读；方案 B / 回归实证 / 学习路线）
+- docs/progress-2026-09-04.md —— 上一阶段（第二被测项目适配验证 + 方案 B）
+- docs/progress-2026-09-03.md —— 更早（V1 端到端 + V2 自愈）
 - docs/v1-technical-design.md —— V1 技术方案（接口契约 / 数据流 / 指标口径）
 - samples/README.md —— 被测项目记录与固定 commit
 - AGENTS.md —— 本文件
