@@ -1,18 +1,19 @@
 # AI 智能测试辅助引擎（AI-TAE）
 
-> 状态：**V1 已端到端跑通**（2026-09-03 真实：todo_app 19 个接口自动生成 + 执行，可执行率与通过率均 19/19=100%，连跑两次可复现）
-> 之前版本的进度快照见 docs/progress-2026-09-03.md
-> 给 AI 助手的协作指引见 [AGENTS.md](AGENTS.md) ｜ 阶段进度见 [docs/progress-2026-09-03.md](docs/progress-2026-09-03.md)
-> 项目说明书与上下文交接：`AI-TAE-项目说明书与上下文交接.md` ｜ V1 技术方案：[docs/v1-technical-design.md](docs/v1-technical-design.md)
-> 给非技术朋友/HR 的介绍（通俗版）：[docs/AI-TAE-非技术介绍.md](docs/AI-TAE-非技术介绍.md) ｜ V3 规划：[docs/v3-technical-design.md](docs/v3-technical-design.md)
+> **一句话**：把 LLM 嵌进真实测试工作流的引擎——喂它被测项目的接口说明书，自动产出可执行的
+> pytest 用例并跑出真实通过率；被测网页改版导致 UI 测试失效时，自动修复并真实验证。
+>
+> **解决什么问题**：手写接口/UI 测试是苦力活且容易漏；直接让 AI 写又不保证能跑、不可复现、难回归。
+> AI-TAE 把「AI 起草 + 机器门禁 + 人工审阅 + 持续回归」串成一条可复现、可统计、可审计的流水线。
+>
+> **怎么证明有效**：在 2 个真实开源被测项目上端到端跑通并留 junit 证据——
+> V1：todo_app 19/19、fastapi_crud_todo 6/6；V2：4 场景自愈 8/8、稳定态 KV 命中 100%；
+> 自身 147 个测试全过。一切数字可复现、可回溯，无编造。
 
-把 LLM 嵌入真实测试工作流的引擎，分三步落地：
-
-- **V1** 接口文档（OpenAPI/Swagger）→ 自动生成可执行 pytest 用例 → 统计可执行率/通过率
-- **V2** UI 用例失败自愈：先查本地 KV 缓存 → 未命中查 RAG 知识库 → 仍无解才问 LLM → 人工确认后应用
-- **V3** LLM-as-Judge 区分「真 Bug / Flaky / 用例问题」，用 golden 人工标注评测一致率
-
-> ⚠️ **真实数字纪律**：本仓库一切指标以【待实测】占位。未实测前不填任何数字，拒绝编造/包装。
+> 阶段进度：[docs/progress-2026-09-04.md](docs/progress-2026-09-04.md)（最新）｜
+> [docs/progress-2026-09-03.md](docs/progress-2026-09-03.md)（V1 端到端 + V2）｜
+> 协作指引 [AGENTS.md](AGENTS.md)｜技术方案 [docs/v1-technical-design.md](docs/v1-technical-design.md)｜
+> 被测项目记录 [samples/README.md](samples/README.md)
 
 ## 系统架构（V1 已实测）
 
@@ -71,6 +72,24 @@ V2（UI 失败自愈）已在 todo_app 上真实跑通最小闭环并扩到 4 �
 - 真实工程发现：同页连续改版会使「整页结构指纹」变化导致 KV 签名失效 → **RAG 模糊检索兜底**仍成功（KV 精确敏感 / RAG 模糊鲁棒的互补实证）
 - 完整口径与记录见 docs/progress-2026-09-03.md；数据产物在 data/v2_experiments（gitignore，不入库）
 
+### 适配层可移植实证（2026-09-04，真实）
+
+核心代码与被测项目通过「适配契约」解耦——**换一个被测项目只需写一个约 30 行适配器，核心零改动**。
+已在第二个真实项目（与 todo_app 完全不同：无认证纯 CRUD）上验证：
+
+| 被测项目 | 认证形态 | 接口数 | 真实结果 |
+|---|---|---|---|
+| todo_app（manojnd9/todo_app，password） | 登录 + token | 19 | 19/19 可执行率/通过率 100%（回归） |
+| fastapi_crud_todo（lymanny/FastAPI-CRUD-Todo，none） | 无认证 | 6 | 6/6 可执行率/通过率 100%（方案 B 后，零人工修正） |
+
+生成质量三次迭代（全部真实，同一被测、同一模型、无人工修正）：
+① LLM 在用例里自建资源、凭惯例断言 201 → 通过率 66.7%；
+② 仅给 Prompt 加「状态码纪律」规则 → 50%（模型看不到子接口的 responses，规则缺信息支撑）；
+③ **方案 B**：资源改由框架 fixture 创建注入、LLM 用例不自建 → **100%**。
+
+结论（可讲）：与其让 LLM「少犯错」，不如让 LLM「没有机会犯那类错」——资源准备从 LLM 代码移到框架，
+自建子请求这一整类错误消失。完整记录见 docs/progress-2026-09-04.md；junit 在 data/runs（gitignore，不入库）。
+
 ## 环境（Windows 已迁移到 C 盘独立环境）
 
 > 背景：原开发环境装在 D 盘，D 盘现为只读保护，故在 C 盘重建，与 D 盘完全解耦。
@@ -125,7 +144,7 @@ aiae run
 │   ├── llm/ parser/ generator/ runner/ metrics/   # V1 模块（契约先行）
 │   └── healer/ judge/ kv/ rag/ # V2/V3 占位
 ├── tests/                      # 自身单元测试
-├── samples/                    # 被测项目记录 + 导出 OpenAPI（已选定 todo_app）
+├── samples/                    # 被测项目记录 + 导出 OpenAPI（todo_app + fastapi_crud_todo）
 ├── data/                       # 被测快照与运行产物（gitignore，不入库）
 └── pyproject.toml
 ```
@@ -134,23 +153,23 @@ aiae run
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 任务 1 | 确认被测开源小项目 + 细化 V1 技术方案 + C 盘环境 | ✅ 已完成（被测：manojnd9/todo_app） |
-| 任务 2 | V1：OpenAPI → 生成 → Parser → pytest 执行 → 指标 | 未开始（初试后集中做） |
-| 任务 3 | V2：自愈 + KV/RAG | 未开始 |
-| 任务 4 | V3：judge + golden | 未开始（视时间） |
-| 收尾 | 可观测性控制台 + README 截图 + 演示 | 见 docs（V1 之后再加，避免假数据） |
+| 骨架 + 契约 | 目录/接口契约/metrics 口径 + C 盘独立环境 | ✅ 已完成 |
+| V1 | OpenAPI → LLM 生成 → 门禁落盘 → pytest 执行 → 指标 | ✅ 已完成（todo_app 19/19、fastapi_crud_todo 6/6） |
+| 适配层实证 | 第二被测项目 + 方案 B（资源与认证解耦） | ✅ 已完成（2026-09-04，核心零改动换项目） |
+| V2 | UI 失败自愈：KV → RAG → LLM → 人工确认 → 验证 → 写回 | ✅ 关键路径已跑通（4 场景自愈 8/8、稳定态 KV 命中 100%） |
+| V3 | judge + golden 评测 | ⬜ 占位（初试后集中做） |
+| 收尾 | README 门面 / 演示视频 / 可观测性 | 🔄 进行中 |
 
 时间盒提醒：考研初试（约 2026-12）前只做轻量工作，大代码留到初试后集中冲刺。
-
 ## 证据链清单（做完勾选，全部真实）
 
-- [x] 选定 1 个真实开源小项目（被测对象：todo_app，固定 commit）
-- [ ] V1：可执行率 / 通过率【待实测】
-- [ ] V2：≥5 个真实 UI 改动 case + 自愈成功率/耗时【待实测】
-- [ ] V2：缓存命中率【待实测】
+- [x] 选定 2 个真实开源小项目（todo_app / fastapi_crud_todo，均固定 commit）
+- [x] V1：可执行率 / 通过率 100%（todo_app 19/19、fastapi_crud_todo 6/6，junit 留档）
+- [x] V2：4 个真实 UI 改动场景，自愈成功率 8/8、稳定态 KV 命中 100%
+- [x] V2：缓存命中率（稳定态）4/4 = 100%
 - [ ] V3：judge 与 golden 一致率【待实测】
 - [ ] 公网部署 URL / 可运行演示
-- [ ] README：架构图 + 截图 + 快速开始（架构图✅，截图待 V1）
+- [x] README：架构图 + 实测数字 + 快速开始（mermaid + PNG 图均已引用）
 - [ ] 演示视频（2–3 分钟）
 - [ ] git commit 历史真实连续
 - [ ] （可选）开源到 GitHub 收集真实反馈
