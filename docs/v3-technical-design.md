@@ -1,6 +1,6 @@
 # AI-TAE · V3 技术方案细化（规划版）
 
-> 版本：v0.1（2026-09-04）｜关联：项目说明书 §V3 / §7 面试深水区 / 占位模块 src/aiae/judge
+> 版本：v0.1（2026-09-04）｜关联：V3 规划 / 占位模块 src/aiae/judge
 > 本文档是 V3 的「规划契约」：先定目标、数据来源、判定口径、golden 方案、模块边界，
 > 再进入实现 —— 与 V1 的任务 1（先定契约）同套路。
 
@@ -12,7 +12,7 @@
 V1/V2 证明了「AI 能生成、能自愈」；V3 要证明「AI 的判断可信」——用人工标注的 golden
 样本算一致率，而不是自说自话。
 
-## 2. 范围与不做（守住时间盒与红线）
+## 2. 范围与不做（守住范围与红线）
 
 - **做**：最小 judge（LLM 三分类判定）+ golden 标注（先 30–50 条）+ 一致率评测 + 误报/漏报分析。
 - **不做**（明确划线）：双模型投票（成本翻倍，Roadmap）；judge 自动化接入 CI；多租户。
@@ -26,7 +26,7 @@ V1/V2 证明了「AI 能生成、能自愈」；V3 要证明「AI 的判断可�
 | `flaky` | 偶发/环境导致，重跑可能通过（超时、时序、外部依赖） | 需复跑佐证 |
 | `test_issue` | 用例/测试本身问题：断言写错、数据没准备、定位器过时 | 最常见（V1 首轮 11 条失败全是此类） |
 
-判定边界（面试可讲）：`test_issue` 与 `bug` 最易混——「用例断言 200 但服务返 401」，
+判定边界（要点）：`test_issue` 与 `bug` 最易混——「用例断言 200 但服务返 401」，
 若服务要求登录而用例没带 token → `test_issue`；若带了 token 仍 401 → 疑似 `bug`。
 
 ## 4. 数据来源（现实约束，诚实标注）
@@ -52,7 +52,7 @@ LLM(DeepSeek) json_mode 三分类：{label: bug|flaky|test_issue, reason, confid
 
 口径（先定，报数先报分母）：
 - **一致率** = judge 与 golden 一致的条数 / golden 总条数
-- **漏报 bug**（最危险）= golden 标 bug 但 judge 判别的 / golden bug 总数 —— 面试主动讲这个，
+- **漏报 bug**（最危险）= golden 标 bug 但 judge 判别的 / golden bug 总数 —— 复盘时主动讲这个，
   比只报一致率可信。
 - **误报 bug** = golden 非 bug 但 judge 判 bug / golden 非 bug 总数。
 
@@ -83,9 +83,9 @@ LLM(DeepSeek) json_mode 三分类：{label: bug|flaky|test_issue, reason, confid
 3. golden 存储 + 标注工具（CLI：逐条显示失败 → 人工选标签）
 4. evaluate：一致率 + 混淆矩阵 + 单测
 5. `aiae judge` CLI + 真实评测跑一轮 → 一致率【待实测→实测】
-6. 面试文档 §8 V3 行 + README 证据链更新
+6. 规划文档 §8 V3 行 + README 证据链更新
 
-## 9. 面试讲法
+## 9. 讲解要点
 
 > judge 不解决「AI 会不会判」，解决「AI 判得对不对有没有证据」。
 > 我用 golden 人工标注（规则先写死 + 双人抽检）算一致率，并且**单独报 bug 漏报率**

@@ -113,7 +113,7 @@ V2（UI 失败自愈）已在 todo_app 上真实跑通最小闭环并扩到 4 �
 ## 快速开始（Windows PowerShell）
 
 ```powershell
-cd C:\Users\彭井艺\Desktop\秋招项目\项目作品\04-AI智能测试辅助引擎-AITAE
+cd <AI-TAE 项目根目录>   # 你 clone 下来的仓库目录
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
 python -m pip install -e .
@@ -169,10 +169,10 @@ aiae run
 | V1 | OpenAPI → LLM 生成 → 门禁落盘 → pytest 执行 → 指标 | ✅ 已完成（todo_app 19/19、fastapi_crud_todo 6/6） |
 | 适配层实证 | 第二被测项目 + 方案 B（资源与认证解耦） | ✅ 已完成（2026-09-04，核心零改动换项目） |
 | V2 | UI 失败自愈：KV → RAG → LLM → 人工确认 → 验证 → 写回 | ✅ 关键路径已跑通（4 场景自愈 8/8、稳定态 KV 命中 100%） |
-| V3 | judge + golden 评测 | ⬜ 占位（初试后集中做） |
+| V3 | judge + golden 评测 | ⬜ 规划中（后续阶段） |
 | 收尾 | README 门面 / 演示视频 / 可观测性 | 🔄 进行中 |
 
-时间盒提醒：考研初试（约 2026-12）前只做轻量工作，大代码留到初试后集中冲刺。
+规划说明：项目按阶段推进，当前聚焦交付质量、文档与可复现性；大块新功能（V3 等）在后续阶段实现。
 ## 证据链清单（做完勾选，全部真实）
 
 - [x] 选定 2 个真实开源小项目（todo_app / fastapi_crud_todo，均固定 commit）

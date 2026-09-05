@@ -8,9 +8,9 @@
 - OpenAPI 导出：samples/openapi/todo_app-openapi.json（17 个 path）
 - 技术栈：FastAPI + SQLAlchemy + Jinja2 + SQLite + JWT(python-jose) + bcrypt
 
-## 为什么选它（面试要能讲）
+## 为什么选它
 
-1. 真实开源、仓库小、结构清晰，自带 CI（GitHub Actions：poetry + pytest）和测试，面试官 clone 即复现；
+1. 真实开源、仓库小、结构清晰，自带 CI（GitHub Actions：poetry + pytest）和测试，clone 即复现；
 2. 自带 OpenAPI（FastAPI 自动生成 /openapi.json），是 V1「接口用例生成」的直接输入；
 3. 有真实 UI 页面（注册 / 登录 / 待办增删改查，HTML+Jinja2），是 V2「UI 失败自愈」的实验场；
 4. SQLite 本地可跑，无 Docker / Postgres 依赖，Windows 一条 uvicorn 就能起。
